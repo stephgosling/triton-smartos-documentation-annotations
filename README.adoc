@@ -1,0 +1,6 @@
+Triton and SmartOS documentation annotations
+============================================
+
+A collection of gotchas/links/workarounds/common pitfalls/howtos gleaned whilst
+learning how to run Triton and migrate VMs to it. Also a testbed for learning
+AsciiDoc works. 
