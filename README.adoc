@@ -2,5 +2,346 @@ Triton and SmartOS documentation annotations
 ============================================
 
 A collection of gotchas/links/workarounds/common pitfalls/howtos gleaned whilst
-learning how to run Triton and migrate VMs to it. Also a testbed for learning
-AsciiDoc works. 
+learning how to run Triton and migrate VMs to it. This is absolutely not a
+tutorial and assumes a basic working knowledge of Triton SDC and SmartOS.
+Also started life as a testbed for learning AsciiDoc works.
+
+
+= The canonical documentation
+
+The SmartOS docs are somewhat better than the Triton docs, the latter suffering
+a bit from being out-of-date/incomplete. SmartOS docs are open, Triton currently
+https://smartdatacenter.topicbox.com/groups/sdc-discuss/T9e09dbcc6e7f8847-M8692907c9d10fb8a7ec3243e/source-for-docs-at-docs-tritondatacenter-com[
+are not].
+
+* https://docs.tritondatacenter.com/public-cloud[End User documentation (i.e.
+consumer docs)]
+* https://docs.tritondatacenter.com/private-cloud[Operator documentation (i.e.
+how to run the thing yourself)]
+* https://docs.smartos.org[SmartOS official documentation]
+
+= Other useful resources
+
+* https://smartdatacenter.topicbox.com/groups/sdc-discuss/[Triton Data Center Topicbox mailing list]
+* https://smartos.topicbox.com/groups/smartos-discuss/[SmartOS Topicbox mailing list]
+* https://illumos.topicbox.com/groups/discuss/[Illumos discussion Topicbox mailing list]
+* https://macktronics.com/tritoninst.html[This is a fabulously informative post]
+that for me was instructional when initially prototyping Triton.
+* https://www.davepacheco.net/blog/2024/illumos-physical-memory/[very deep dive
+into illumos memory management]. Part two https://www.davepacheco.net/blog/2024/illumos-swap/[here].
+
+= Hardware Virtual Machines
+
+SmartOS supports both KVM and bhyve as VMMs. Only bhyve supports flexible disk
+storage and instance resizing, making it the preferred choice.
+
+== Building Bhyve images
+
+=== Triton Cloud Images
+
+MNX maintain Triton images of Alma, Debian, Rocky and Ubuntu and these can be
+imported from the public cloud (images.smartos.org) directly in the console. If
+you wish to build your own the packer configuration, scripts etc. https://github.com/TritonDataCenter/triton-cloud-images[can be found here].
+
+=== Creating a disk image from an ISO (i.e. a traditional install method)
+
+The SmartOS/Triton documentation is still around KVM rather than Bhyve. The
+process is similar however the `vmadm` documentation is out of date: it
+mentions methods and flags that _only_ work with KVM and Bhyve is different.
+https://smartos.topicbox.com/groups/smartos-discuss/T1d477bd26c796cad-M6ca9c8317093ee17879656c3[
+This is a good thread] that walks the user through the process including the
+differing commands.
+
+=== Creating a disk image (_not_ from an ISO)
+
+Example VM image creation from an existing disk image (e.g. lift-and-shift of an
+existing VM or an appliance-like image as here. This is based on https://docs.tritondatacenter.com/private-cloud/images/kvm[
+the official documentation] with tweaks/fixes accommodating bhyve and a raw
+image.
+
+. On the headnode create a working directory in `/var/tmp`:
++
+----
+[root@headnode (cabin) /var/tmp]# mkdir talos-1.9.1
+[root@headnode (cabin) /var/tmp]# cd talos-1.9.1/
+
+----
+. Fetch and decompress the image:
++
+----
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# wget https://github.com/siderolabs/talos/releases/download/v1.9.1/metal-amd64.raw.zst
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# zstd -d metal-amd64.raw.zst
+metal-amd64.raw.zst : 1306525696 bytes
+----
+
+. Create an instance definition:
++
+----
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# cat 1.9.1.vmdef.json
+{
+  "name": "1.9.1",
+  "brand": "bhyve",
+  "vcpus": 1,
+  "autoboot": false,
+  "ram": 1024,
+  "quota": 20,
+  "bootrom": "/usr/share/bhyve/uefi-rom.bin",
+  "disks": [
+    {
+      "boot": true,
+      "model": "virtio",
+      "size": 10240
+    }
+  ],
+  "nics": [
+    {
+      "nic_tag": "external",
+      "ip": "dhcp",
+      "primary": "true",
+      "model": "virtio"
+    }
+  ]
+}
+----
+
+. Create an empty instance from the definition:
++
+----
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# vmadm create -f 1.9.1.json
+Successfully created VM 0f2dbd0c-f314-4bb7-932c-f3520b7d93d1
+----
+
+. Noting the zone ID, copy the disk image to the raw device of the empty instance:
++
+----
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# dd if=metal-amd64.raw of=/dev/zvol/rdsk/zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1/disk0 bs=16M
+77+1 records in
+77+1 records out
+1306525696 bytes (1.2 GiB) transferred in 8.571684 secs (145 MiB/sec)
+----
++
+TIP: at this point you might boot the instance to make additional changes e.g.
+configuration management or installing guest tools etc. (see also cdrom
+attachment).
+
+. Retrieve the zvol uuid for the for the instance storage:
++
+----
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# vmadm get 0f2dbd0c-f314-4bb7-932c-f3520b7d93d1 | json -a disks | json -a zfs_filesystem
+zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1/disk0
+----
+
+. Create a snapshot of the zvol and copy it to a file (in this example the quota needed to be extended to allow the snapshot creation):
++
+----
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# zfs get quota zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1
+NAME                                        PROPERTY  VALUE  SOURCE
+zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1  quota     30.3G  local
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# zfs set quota=40G zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# zfs snapshot zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1/disk0@dataset
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# zfs send zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1/disk0@dataset | gzip > 1.9.1.zvol.gz
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# ls -l 1.9.1.zvol.gz
+-rw-r--r--   1 root     root     109388709 Jan  2 11:38 1.9.1.zvol.gz
+----
+
+. Create a IMGAPI manifest that describes the desired image:
++
+----
+{
+  "v": "2",
+  "uuid": "<from the output of uuid>",
+  "owner": "<from the output of sdc-ldap s 'login=admin' | grep ^uuid | cut -d' ' -f2>",
+  "name": "talos-1.9.1",
+  "description": "Talos Linux 1.9.1 (SDC v0.0.1)",
+  "version": "0.0.1",
+  "state": "active",
+  "disabled": false,
+  "public": true,
+  "os": "linux",
+  "type": "zvol",
+  "files": [
+    {
+      "sha1": "<from the output of sum -x sha1 /var/tmp/talos-1.9.1/1.9.1.zvol.gz | cut -d' ' -f1>"
+      "size": <from the output of ls -l /var/tmp/talos-1.9.1/1.9.1.zvol.gz | awk '{ print $5 }'>,
+      "compression": "gzip"
+    }
+  ],
+  "requirements": {
+    "networks": [
+      {
+        "name": "net0",
+        "description": "public"
+      }
+    ],
+   "brand": "bhyve",
+   "bootrom": "uefi"
+  },
+  "image_size": "<as specified in disks.size in talos-1.9.1.vmdef.json>",
+  "disk_driver": "virtio",
+  "nic_driver": "virtio",
+  "cpu_type": "host"
+}
+----
+
+. Finally, import the image:
++
+----
+[root@headnode (cabin) /var/tmp/talos-1.9.1]# sdc-imgadm import -m /var/tmp/talos-1.9.1/1.9.1.manifest.json -f /var/tmp/talos-1.9.1/1.9.1.zvol.gz
+Imported image 01699ed6-c901-11ef-b6be-7085c2dbfb7d (talos-1.9.1, 0.0.1, state=unactivated)
+...c901-11ef-b6be-7085c2dbfb7d [=======================================================>] 100% 104.32MB
+Added file "/var/tmp/talos-1.9.1/1.9.1.zvol.gz" (compression "gzip") to image 01699ed6-c901-11ef-b6be-7085c2dbfb7d
+Activated image 01699ed6-c901-11ef-b6be-7085c2dbfb7d
+----
+
+== Running Bhyve instances
+
+=== Console output from bhyve instances
+
+In order to access to the console of a bhyve instance via VNC, the instance must
+be running with a UEFI bootrom rather than legacy BIOS. For public images this
+is already set so happens automatically. For self-built images one must enable
+it in the image https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td4b1c1bb557bae11/spring-2024-hvm-images[thus]:
+
+`sdc-imgadm update <uuid> requirements.brand=bhyve requirements.bootrom=uefi`
+
+For instances not started/managed by Triton, the UEFI bootrom can be enabled on
+a stopped instance directly via `vmadm(8)` on the given compute node:
+
+----
+vmadm stop <uuid>
+vmadm update <uuid> bootrom="/usr/share/bhyve/uefi-rom.bin"
+vmadm start <uuid>
+----
+
+=== Resizing bhyve instances
+
+Resizing instances cannot be done via the console. There are however three ways
+to change the CPU and memory limits for a virtual machine. All require the
+instance to be in the stopped state.
+
+. via `vmadm(8)`
+. via the Triton VMAPI: `sdc sdc-vmapi /vms/<instance uuid>?action=update -d '{"billing_id":"<new package uuid>"}'`
+. via the https://smartdatacenter.topicbox.com/groups/sdc-discuss/T0609521b5cfbff31-Mc983b2dc841bdb365667bf46/resize-a-bhyve-instance[triton CLI] (need to research this)
+
+
+===  Triton packages/PAPI
+
+Feature-wise PAPI is pretty thread-bare. A Triton Package is a bundling of
+resources that, in conjunction with an image, define a VM. All salient aspects
+of a Package are immutable, and Packages themselves can't be deleted nor
+renamed, which is a bit painful. Good news is that in the Console the default
+search is for _active_ packages so the churn can be hidden with some fastidious
+deactivation.
+* quotas in packages being less than the image size will fail silently on
+provisioning.
+
+=== Storage
+
+* the two disk thing, must try to find that post
+* quotas
+
+=== Migrations
+
+* migrations happen over the admin network, which may
+
+=== CPU caps
+
+By default CPU cap enforcement is enabled and in any production or multi-tenant
+environment the recommendation is to leave it on. This is to prevent perceived
+scheduling issues for different tenants. Capped and non-capped workloads should
+never be mixed as this can cause difficulties for the scheduling of VMAPI/CNAPI.
+If both kinds of workloads need to exist a mitigation is with the use of https://docs.tritondatacenter.com/private-cloud/traits[traits]. This https://smartdatacenter.topicbox.com/groups/sdc-discuss/Tdee50d0ae7379e1d[conversation on the rationale, history and issues] is very useful
+
+==== Fixing provisioning errors around "no compute resources"
+
+A single provisioning error can cascade into a DC-wide problem. In one instance
+I had a VM migration that went wrong and left a deleted VM still existing in
+VMAPI even though it was long gone from its host compute node. The VM object
+looked like this:
+----
+{
+  "uuid": "4fe6dceb-37a4-4e18-983c-2230d1e4b802",
+  "alias": null,
+  "autoboot": null,
+  "brand": null,
+  "billing_id": null,
+  "cpu_cap": null,
+  "cpu_shares": null,
+  "create_timestamp": null,
+  "customer_metadata": {},
+  "datasets": [],
+  "destroyed": null,
+  "firewall_enabled": false,
+  "internal_metadata": {},
+  "last_modified": null,
+  "limit_priv": null,
+  "max_locked_memory": null,
+  "max_lwps": null,
+  "max_physical_memory": null,
+  "max_swap": null,
+  "nics": [],
+  "owner_uuid": null,
+  "platform_buildstamp": null,
+  "quota": null,
+  "ram": null,
+  "resolvers": null,
+  "server_uuid": "9bb8490c-8aa8-1a29-a45c-d8bbc1cd9188",
+  "snapshots": [],
+  "state": null,
+  "tags": {},
+  "zfs_filesystem": null,
+  "zfs_io_priority": null,
+  "zone_state": null,
+  "zonepath": null,
+  "zpool": null,
+  "image_uuid": null
+}
+----
+amongst other things `cpu_cap: null` stopped CNAPI/VMAPI from automatically
+choosing that compute node for new VM replacement, even for a miniscule 64MB
+Joyent branded zone, because it would mean mixing capped and uncapped workloads.
+The fix was to modify the object and setting the CPU cap via `sdc-vmapi`
+ https://github.com/TritonDataCenter/sdc-vmapi/blob/master/docs/index.md#putvm-put-vmsuuid[as per the VMAPI documentation]:
+
+----
+sdc-vmapi /vms/4fe6dceb-37a4-4e18-983c-2230d1e4b802? -X PUT -d '{"cpu_cap": "100"}'
+HTTP/1.1 200 OK
+Connection: close
+Content-Type: application/json
+Content-Length: 73
+Date: Fri, 03 Jan 2025 15:53:15 GMT
+Server: VMAPI/9.16.0
+x-request-id: 22cb050e-47f7-4bf8-a789-a7abc4810ca6
+x-response-time: 129
+x-server-name: 54406d2e-1c7c-45fc-a161-e5083e6a2d58
+
+{
+  "uuid": "4fe6dceb-37a4-4e18-983c-2230d1e4b802",
+  "cpu_cap": "100",
+  "tags": {}
+}
+----
+
+With the cap back in place automatic allocation of new workloads was unblocked.
+
+== Networking
+
+* Instances that do not have the guest agent cannot be assigned IP addresses
+from the Triton DHCP server. In order to get an assignment from an external DHCP
+server _Allow DHCP Spoofing_ must be enabled in the console which corresponds to
+the `nics["whichever"].allow_dhcp_spoofing` boolean in VMAPI. Unfortunately this
+is wasteful in the `external` network address space as an address will be
+assigned there but not used.
+
+* investigate what is needed for for Talos VIP in terms of spoofing
+
+== Miscellanea
+
+* I had a really odd problem with a compute node related to the Realtek Gigabit
+Ethernet driver. For some reason (age?) `dladm` is unable to set the MTU on this
+driver even though `show-linkprop rge0` says that the MTU property is
+read-write. This had the side effect of a cascading failure for that node
+resulting in very odd behaviour from `vmadm`. https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td611bcbb977e00d1[
+This is the Triton Topicbox thread].
+* headnode console session history
+* must explore https://www.npmjs.com/package/triton
