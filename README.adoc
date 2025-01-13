@@ -326,22 +326,38 @@ With the cap back in place automatic allocation of new workloads was unblocked.
 
 == Networking
 
-* Instances that do not have the guest agent cannot be assigned IP addresses
+=== Guest agent
+
+Instances that do not have the guest agent cannot be assigned IP addresses
 from the Triton DHCP server. In order to get an assignment from an external DHCP
 server _Allow DHCP Spoofing_ must be enabled in the console which corresponds to
 the `nics["whichever"].allow_dhcp_spoofing` boolean in VMAPI. Unfortunately this
 is wasteful in the `external` network address space as an address will be
 assigned there but not used.
 
+=== Compute Node networking
+
+Compute nodes cannot use RealTek Gigabit Ethernet adapters for their admin nic.
+For some reason (age?) `dladm` is unable to set the MTU on this driver even
+though `show-linkprop rge0` said that the MTU property was read-write. This had
+the side effect of a cascading failure for that node resulting in very odd
+behaviour from `vmadm`. https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td611bcbb977e00d1[
+This is the Triton Topicbox thread].
+
 * investigate what is needed for for Talos VIP in terms of spoofing
 
 == Miscellanea
 
-* I had a really odd problem with a compute node related to the Realtek Gigabit
-Ethernet driver. For some reason (age?) `dladm` is unable to set the MTU on this
-driver even though `show-linkprop rge0` says that the MTU property is
-read-write. This had the side effect of a cascading failure for that node
-resulting in very odd behaviour from `vmadm`. https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td611bcbb977e00d1[
-This is the Triton Topicbox thread].
 * headnode console session history
 * must explore https://www.npmjs.com/package/triton
+
+=== Prometheus and Grafana
+
+Prometheus source is https://github.com/TritonDataCenter/triton-prometheus[here]
+. The instructions are good but https://github.com/TritonDataCenter/triton-prometheus/blob/master/setup-prometheus.sh[
+there is a shell script to crib some needed settings] e.g.
+* `sdc-useradm replace-attr admin triton_cns_enabled true`
+* `sdc-login -l cns "svcadm restart cns-updater`
+
+and an additional shell script documenting how to install a 16.04 LX zone https://github.com/TritonDataCenter/triton-prometheus/blob/master/setup-prometheus-lx.sh[
+is here].
