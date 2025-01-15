@@ -361,3 +361,28 @@ there is a shell script to crib some needed settings] e.g.
 
 and an additional shell script documenting how to install a 16.04 LX zone https://github.com/TritonDataCenter/triton-prometheus/blob/master/setup-prometheus-lx.sh[
 is here].
+
+=== Temperatures
+
+Had a couple of crashes on a CN and on a hunch suspected temperature. Temps are
+exposed via the FMA and can be read with `fmtopo` thus:
+
+----
+[root@cn0 (cabin) ~]# /usr/lib/fm/fmd/fmtopo -V *sensor=temp | grep reading
+    reading           double    37.625000
+    reading           double    37.625000
+    reading           double    37.625000
+    reading           double    37.625000
+    reading           double    37.625000
+    reading           double    37.625000
+    reading           double    37.750000
+    reading           double    37.750000
+    reading           double    37.750000
+    reading           double    37.750000
+    reading           double    37.750000
+    reading           double    37.750000
+    reading           double    37.750000
+    reading           double    37.750000
+    reading           double    37.750000
+    reading           double    37.750000
+----
