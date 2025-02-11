@@ -242,7 +242,8 @@ provisioning.
 
 === Migrations
 
-* migrations happen over the admin network, which may
+* migrations happen over the admin network, which for me is 1G rather than 10G,
+something I need to revisit
 
 === CPU caps
 
@@ -344,8 +345,6 @@ the side effect of a cascading failure for that node resulting in very odd
 behaviour from `vmadm`. https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td611bcbb977e00d1[
 This is the Triton Topicbox thread].
 
-* investigate what is needed for for Talos VIP in terms of spoofing
-
 == Miscellanea
 
 * headnode console session history
@@ -356,6 +355,7 @@ This is the Triton Topicbox thread].
 Prometheus source is https://github.com/TritonDataCenter/triton-prometheus[here]
 . The instructions are good but https://github.com/TritonDataCenter/triton-prometheus/blob/master/setup-prometheus.sh[
 there is a shell script to crib some needed settings] e.g.
+
 * `sdc-useradm replace-attr admin triton_cns_enabled true`
 * `sdc-login -l cns "svcadm restart cns-updater`
 
@@ -365,7 +365,8 @@ is here].
 === Temperatures
 
 Had a couple of crashes on a CN and on a hunch suspected temperature. Temps are
-exposed via the FMA and can be read with `fmtopo` thus:
+exposed via the FMA and can be read with `fmtopo` thus (8 core, 16 thread CPU so
+16 temperatures):
 
 ----
 [root@cn0 (cabin) ~]# /usr/lib/fm/fmd/fmtopo -V *sensor=temp | grep reading
@@ -386,3 +387,13 @@ exposed via the FMA and can be read with `fmtopo` thus:
     reading           double    37.750000
     reading           double    37.750000
 ----
+
+=== Disks
+
+The FMA is S.M.A.R.T aware but doesn't expose the complete suite of reporting
+that `smartmontools` does, plus all the drives differ. `smartmontools` is
+available to the headnode via `pkgsrc` but compute nodes can't install packages.
+Need to do further regarding this but in the event that `smartctl` doesn't make
+it to the image I should see how the PXE images are built or as a worst-case
+`sdc-oneachnode` can drop a binary. All of a sudden this gets additional
+orchestration/configuration management-ey and feels a bit wrong.
