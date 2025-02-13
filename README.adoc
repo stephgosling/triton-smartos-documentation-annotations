@@ -397,3 +397,17 @@ Need to do further regarding this but in the event that `smartctl` doesn't make
 it to the image I should see how the PXE images are built or as a worst-case
 `sdc-oneachnode` can drop a binary. All of a sudden this gets additional
 orchestration/configuration management-ey and feels a bit wrong.
+
+=== Migrating or recovering nodes
+
+Steps for https://docs.tritondatacenter.com/private-cloud/troubleshooting/compute-node[
+recovering a Compute Node are relatively straight forward]. Steps for gracefully
+migrating a head, albeit old, https://github.com/TritonDataCenter/triton/pull/172[
+are in this pull request]. I had a hardware failure on my headnode once and was
+able to physically move the disks (and two of the 3 NICs) and USB key to a new
+node and SmartOS would start on the headnode, even if SDC didn't. This was
+because the NIC with the admin label was no longer there. The fix was
+straight forward in mounting the USB key (`sdc-usbkey mount`) and editing
+the `admin_nic` line. After a reboot SDC came up properly and the old headnode
+(in _state UNKNOWN_) needed to be removed. Similar steps will work for NIC
+migration.
