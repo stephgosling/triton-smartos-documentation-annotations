@@ -400,14 +400,21 @@ orchestration/configuration management-ey and feels a bit wrong.
 
 === Migrating or recovering nodes
 
-Steps for https://docs.tritondatacenter.com/private-cloud/troubleshooting/compute-node[
-recovering a Compute Node are relatively straight forward]. Steps for gracefully
-migrating a head, albeit old, https://github.com/TritonDataCenter/triton/pull/172[
-are in this pull request]. I had a hardware failure on my headnode once and was
-able to physically move the disks (and two of the 3 NICs) and USB key to a new
-node and SmartOS would start on the headnode, even if SDC didn't. This was
-because the NIC with the admin label was no longer there. The fix was
-straight forward in mounting the USB key (`sdc-usbkey mount`) and editing
-the `admin_nic` line. After a reboot SDC came up properly and the old headnode
-(in _state UNKNOWN_) needed to be removed. Similar steps will work for NIC
-migration.
+* node UUID is based on https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td611bcbb977e00d1-Mb9105949ffe023f1a0fe82d1/reprovisioning-a-cn-network-early-admin-service-failure[
+on the serial number]. No matter how many reinstalls the a node with a given
+motherboard will get the same UUID.
+* steps for https://docs.tritondatacenter.com/private-cloud/troubleshooting/compute-node[
+recovering a Compute Node are relatively straight forward].
+* steps for gracefully migrating a headnode, albeit old, https://github.com/TritonDataCenter/triton/pull/172[
+are in this pull request].
+* steps for recovering a headnode involve physically moving the headnode disks,
+as many NICs as is feasible and USB stick. SmartOS will start but Triton likely
+will not because NIC labels (especially `admin`) may be wrong; this can be
+corrected by mounting the USB stick (`sdc-usbkey mount`) and editing the NIC
+tags in `/mnt/usbkey/config`. Following a reboot Triton should start but NICs in
+NAPI will still need to be cleaned up, particularly if reusing headnode
+hardware.
+** `sdc-napi /nics | less` to list
+** `curl -X PUT napi.{sdc domain}/nics/{mac} -d belongs_to_uuid=1002ff03-e004-0105-8e06-ad0700080009`
+where the ownership is wrong (e.g. old headnode)
+** `curl -X DELETE napi.{sdc domain}/nics/{mac}` where the NIC no longer exists
