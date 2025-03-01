@@ -19,6 +19,7 @@ consumer docs)]
 * https://docs.tritondatacenter.com/private-cloud[Operator documentation (i.e.
 how to run the thing yourself)]
 * https://docs.smartos.org[SmartOS official documentation]
+* https://github.com/tritondatacenter/triton-cns/blob/master/docs/operator-guide.md[Triton CNS overview]
 
 = Other useful resources
 
@@ -347,8 +348,11 @@ This is the Triton Topicbox thread].
 
 == Miscellanea
 
+=== ToDo
+
 * headnode console session history
-* must explore https://www.npmjs.com/package/triton
+* CNS
+* Certificates (needs CNS) (https://github.com/TritonDataCenter/triton-dehydrated[see also this]
 
 === Prometheus and Grafana
 
@@ -364,9 +368,8 @@ is here].
 
 === Temperatures
 
-Had a couple of crashes on a CN and on a hunch suspected temperature. Temps are
-exposed via the FMA and can be read with `fmtopo` thus (8 core, 16 thread CPU so
-16 temperatures):
+Temperaturs are exposed via the FMA and can be read with `fmtopo` thus (8 core,
+16 thread CPU so 16 temperatures):
 
 ----
 [root@cn0 (cabin) ~]# /usr/lib/fm/fmd/fmtopo -V *sensor=temp | grep reading
@@ -418,3 +421,16 @@ hardware.
 ** `curl -X PUT napi.{sdc domain}/nics/{mac} -d belongs_to_uuid=1002ff03-e004-0105-8e06-ad0700080009`
 where the ownership is wrong (e.g. old headnode)
 ** `curl -X DELETE napi.{sdc domain}/nics/{mac}` where the NIC no longer exists
+
+=== Triton command-line client and CloudAPI
+
+https://www.npmjs.com/package/triton[triton] is a nodejs package and is simple
+enough to install (`sudo npm install -g triton`) but the configuration is a
+little odd with self-signed certificates requiring the `-i` option and even
+though documented, `TRITON_TLS_INSECURE=1` and `SDC_TLS_INSECURE=1` do not work.
+
+The setup will walk through a profile setup requiring the CloudAPI URL, Triton
+username and the fingerprint of the SSH key for that user.
+
+TIP: users (including operators it seems) can only see their own instances so,
+for example, the admin user can only see SDC compontents.
