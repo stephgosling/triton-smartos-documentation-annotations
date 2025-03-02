@@ -393,13 +393,27 @@ Temperaturs are exposed via the FMA and can be read with `fmtopo` thus (8 core,
 
 === Disks
 
+==== Reporting and Failures
+
 The FMA is S.M.A.R.T aware but doesn't expose the complete suite of reporting
-that `smartmontools` does, plus all the drives differ. `smartmontools` is
-available to the headnode via `pkgsrc` but compute nodes can't install packages.
-Need to do further regarding this but in the event that `smartctl` doesn't make
-it to the image I should see how the PXE images are built or as a worst-case
+that `smartmontools` does, which is not unexpected given that the reporting for
+drives from different manufactureres all differ. `smartmontools` is available to
+the headnode via `pkgsrc` but compute nodes can't install packages. `smartmontools`
+may yet make it into the default SmartOS image but in event that this doesn't
+happen, I should see how the PXE images are built, or, as a worst-case
 `sdc-oneachnode` can drop a binary. All of a sudden this gets additional
-orchestration/configuration management-ey and feels a bit wrong.
+orchestration/configuration management-ey and feels a bit wrong and needs more
+research.
+
+==== recordsize, volblocksize, compression and write amplification
+
+By default, the `zones` zpool recordsize is 128k compression is off. For HVM
+workloads, when VMAPI creates a virtual machine the volblocksize is by default
+8k for the disks and is not configurable currently. Received wisdom is that
+enabling `lz4` (`zstd` is not yet available in Illumos ZFS) but this should be
+done at CN setup time and my (current) understanding is that HVM instances would
+need to be recreated as in a zone migration the zvols properties are going to
+be retained.
 
 === Migrating or recovering nodes
 
