@@ -326,6 +326,13 @@ x-server-name: 54406d2e-1c7c-45fc-a161-e5083e6a2d58
 
 With the cap back in place automatic allocation of new workloads was unblocked.
 
+=== Protecting virtual machines
+
+The console offers no guardrails for deleting HVMs (nor indeed compute nodes)
+but their datasets can be protected with: `vmadm update <uuid> indestructible_zoneroot=true`
+which will at least stop the zone (therefore, the data) being destroyed.
+
+
 == Networking
 
 === Guest agent
@@ -353,6 +360,7 @@ This is the Triton Topicbox thread].
 * headnode console session history
 * CNS
 * Certificates (needs CNS) (https://github.com/TritonDataCenter/triton-dehydrated[see also this]
+* Traits/locality
 
 === Prometheus and Grafana
 
