@@ -6,7 +6,6 @@ learning how to run Triton and migrate VMs to it. This is absolutely not a
 tutorial and assumes a basic working knowledge of Triton SDC and SmartOS.
 Also started life as a testbed for learning AsciiDoc works.
 
-
 = The canonical documentation
 
 The SmartOS docs are somewhat better than the Triton docs, the latter suffering
@@ -15,7 +14,7 @@ https://smartdatacenter.topicbox.com/groups/sdc-discuss/T9e09dbcc6e7f8847-M86929
 are not].
 
 * https://docs.tritondatacenter.com/public-cloud[End User documentation (i.e.
-consumer docs)]
+MNX customer docs)] but somewhat applicable to those who self-host.
 * https://docs.tritondatacenter.com/private-cloud[Operator documentation (i.e.
 how to run the thing yourself)]
 * https://docs.smartos.org[SmartOS official documentation]
@@ -238,13 +237,87 @@ provisioning.
 
 === Storage
 
-* the two disk thing, must try to find that post
-* quotas
+* TODO the two disk thing, must try to find that post
+* TODO quotas, reservations and refreservations
+* delegated datasets allow some ZFS administrative operations to happen in a
+zone. Relevant really only for containers, not HVM.
+* quotas can only be set in the global zone
+* resizing a zone is as simple (in the global zone) as `zfs set quota=1T zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f`
+* recordsize can be set in a zone and only takes effect with new files: `zfs set recordsize=1M zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f/data`
+
+=== Networked Storage
+
+==== NFS
+
+This is a mix of inexperience wth v4 on my part, the https://docs.smartos.org/configuring-nfs-in-smartos/[
+official SmartOS docs being _very_ out of date] (basically, do not use!) and
+documentation being increasingly hard to find for things that are not Linux.
+
+You _can_ enable NFS (or SMB) in the global zone but that feels icky if you
+think about unix users and other changes needed. Instead I opted to run multiple
+zones (small ones too, only 512MB RAM) as that gives much more flexibility:
+
+* changes persist in the zones
+* recordsize can be set per share as appropriate for the workload
+* NFS share restrictions can also be set as appropriate
+
+General pointers regarding NFS:
+
+* Enabling NFS in a zone (presumably also the global zone, untested...) requires
+`svcadm enable rpc/bind` which isn't on by default in Triton SmartOS.
+* Enabling a share can be done in a (delegated dataset?) zone thus: `zfs set sharenfs='rw=@172.24.0.254/32' zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f/data`
+* NFSv4 needs DNS domains to match, not just Unix UIDs: `sharectl set -p nfsmapid_domain=chuci.org nfs`.
+Without that, NFS from Linux will work but the mappings will be incorrect:
+`user:group` are set correctly server-side but are `nobody:nogroup` client-side.
+* In Ubuntu 24.04 (but _not_ 22.04) this also needed to be matched with an
+equivalent domain in `/etc/idmapd.conf`.
+* NFS performance on spinning disk is particularly poor as NFS will mount `rw`
+filesystems `sync` for durability. This can be mitigated with a log special
+vdev for the ZIL however the practicalities of that are a subject by themselves.
+
+==== SMB
+
+This is an absolutely massive topic and the documentation is confusing and/or
+out of date. My usecase was simple: migration of data from an equivalent share
+that had resided on Ubuntu/Samba and had also been simultaneously shared
+as NFS described above. No AD, and not even remotely complicated. What follows
+is a hodgepodge of https://wiki.smartos.org/configuring-smb-in-smartos/[
+the official documentation] (outdated) and https://illumos.topicbox.com/groups/developer/T853ccac866b92198-M029acf623527b9ff13bd3ada[this thread]. I didn't manage to get `sharemgr` to do anything useful
+but was able to muddle through with `zfs set sharesmb` once the prerequisites
+were done. So steps taken in a zone that was already sharing via NFS (i.e.
+unix users matched what existed before/on other instances):
+
+. Edit `pam.conf` to add `pam_smb_passwd.so.1` (see links above, note tabs)
+. Enable the services:
++
+----
+svcadm enable smb/server
+svcadm enable smb/client
+svcadm enable rpc/bind # already enabled but for completeness
+svcadm enable idmap    # already enabled but for completeness
+----
+
+. Create the unix group
+. Create the unix users
+. Enable the unix users as SMB users (needed so that their passwords can be
+synchronized with `/var/smb/smbpasswd`
++
+----
+smbadm enable-user <username>
+----
+
+. Set the password for the unix user as normal (i.e `passwd <username>`
+. At this point everything wanted to do things with `sharemgr` but I couldn't
+get them to work, however `sharesmb` (analogous to `sharenfs`) _did_ work for me:
++
+----
+zfs set sharesmb=on zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f/data
+----
 
 === Migrations
 
 * migrations happen over the admin network, which for me is 1G rather than 10G,
-something I need to revisit
+something I need to revisit.
 
 === CPU caps
 
@@ -362,7 +435,7 @@ This is the Triton Topicbox thread].
 * Certificates (needs CNS) (https://github.com/TritonDataCenter/triton-dehydrated[see also this]
 * Traits/locality
 
-=== Prometheus and Grafana
+=== Prometheus and Grafana (this doesn't work)
 
 Prometheus source is https://github.com/TritonDataCenter/triton-prometheus[here]
 . The instructions are good but https://github.com/TritonDataCenter/triton-prometheus/blob/master/setup-prometheus.sh[
