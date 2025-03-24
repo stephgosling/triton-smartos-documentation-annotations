@@ -18,6 +18,7 @@ MNX customer docs)] but somewhat applicable to those who self-host.
 * https://docs.tritondatacenter.com/private-cloud[Operator documentation (i.e.
 how to run the thing yourself)]
 * https://docs.smartos.org[SmartOS official documentation]
+* https://github.com/TritonDataCenter/rfd[Triton RFD repository]
 * https://github.com/tritondatacenter/triton-cns/blob/master/docs/operator-guide.md[Triton CNS overview]
 
 = Other useful resources
@@ -221,7 +222,7 @@ instance to be in the stopped state.
 
 . via `vmadm(8)`
 . via the Triton VMAPI: `sdc sdc-vmapi /vms/<instance uuid>?action=update -d '{"billing_id":"<new package uuid>"}'`
-. via the https://smartdatacenter.topicbox.com/groups/sdc-discuss/T0609521b5cfbff31-Mc983b2dc841bdb365667bf46/resize-a-bhyve-instance[triton CLI] (need to research this)
+. via the https://smartdatacenter.topicbox.com/groups/sdc-discuss/T0609521b5cfbff31-Mc983b2dc841bdb365667bf46/resize-a-bhyve-instance[triton CLI]
 
 
 ===  Triton packages/PAPI
@@ -306,7 +307,7 @@ synchronized with `/var/smb/smbpasswd`
 smbadm enable-user <username>
 ----
 
-. Set the password for the unix user as normal (i.e `passwd <username>`
+. Set the password for the unix user as normal (i.e `passwd <username>`)
 . At this point everything wanted to do things with `sharemgr` but I couldn't
 get them to work, however `sharesmb` (analogous to `sharenfs`) _did_ work for me:
 +
@@ -316,8 +317,8 @@ zfs set sharesmb=on zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f/data
 
 === Migrations
 
-* migrations happen over the admin network, which for me is 1G rather than 10G,
-something I need to revisit.
+* migrations happen over the admin network, which for me is 1G rather than 10G.
+
 
 === CPU caps
 
@@ -417,6 +418,15 @@ the `nics["whichever"].allow_dhcp_spoofing` boolean in VMAPI. Unfortunately this
 is wasteful in the `external` network address space as an address will be
 assigned there but not used.
 
+==== MTU, NICTags and networks
+
+* As stated in the installation documentation, the underlay network MTU *must*
+be 9000
+* MTU for other networks can only be set at network creation time, even for
+the `admin` or `external` networks. For these I believe that this can be
+remedied by creating a new network with the desired MTU and then changing the
+tags on the NICs. Unclear if this will work for the `admin` network.
+
 === Compute Node networking
 
 Compute nodes cannot use RealTek Gigabit Ethernet adapters for their admin nic.
@@ -496,7 +506,16 @@ done at CN setup time and my (current) understanding is that HVM instances would
 need to be recreated as in a zone migration the zvols properties are going to
 be retained.
 
-=== Migrating or recovering nodes
+==== zpool disk selection
+
+https://github.com/TritonDataCenter/smartos-live/blob/master/src/node_modules/disklayout.js[
+This is the logic] that the installer uses when provisioning a new node. It may
+make choices that are slightly odd (for example on a host with SSD and NVME
+pairs it will chose to allocate the NVME as `SLOG` which is not necessarily what
+you might want). For more involved layouts you may want to start with base
+arrangement at install time then add drives once the node has been provisioned.
+
+=== Migrating or recovering physical nodes
 
 * node UUID is based on https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td611bcbb977e00d1-Mb9105949ffe023f1a0fe82d1/reprovisioning-a-cn-network-early-admin-service-failure[
 on the serial number]. No matter how many reinstalls the a node with a given
@@ -528,4 +547,4 @@ The setup will walk through a profile setup requiring the CloudAPI URL, Triton
 username and the fingerprint of the SSH key for that user.
 
 TIP: users (including operators it seems) can only see their own instances so,
-for example, the admin user can only see SDC compontents.
+for example, the admin user can only see SDC components.
