@@ -40,9 +40,10 @@ storage and instance resizing, making it the preferred choice.
 
 === Triton Cloud Images
 
-MNX maintain Triton images of Alma, Debian, Rocky and Ubuntu and these can be
-imported from the public cloud (images.smartos.org) directly in the console. If
-you wish to build your own the packer configuration, scripts etc. https://github.com/TritonDataCenter/triton-cloud-images[can be found here].
+MNX maintain Triton images of Alma, Debian, Rocky, Ubuntu and Void, and these
+can be imported from the public cloud (images.smartos.org) directly in the
+console. If you wish to build your own the packer configuration, scripts etc.
+https://github.com/TritonDataCenter/triton-cloud-images[can be found here].
 
 === Creating a disk image from an ISO (i.e. a traditional install method)
 
@@ -224,6 +225,35 @@ instance to be in the stopped state.
 . via the Triton VMAPI: `sdc sdc-vmapi /vms/<instance uuid>?action=update -d '{"billing_id":"<new package uuid>"}'`
 . via the https://smartdatacenter.topicbox.com/groups/sdc-discuss/T0609521b5cfbff31-Mc983b2dc841bdb365667bf46/resize-a-bhyve-instance[triton CLI]
 
+=== Instance storage resizing
+
+Although the console supports storage resizing, as with resizing instances, it
+lags behind the triton CLI. To resize a boot or data disk this can be done on
+the given compute node. In the examples below `X` is the linux device, `Y` is
+the corresponding ZFS zvol, so `/dev/vda` mapping to `disk0`, `/dev/vdb` to
+`disk1` etc.
+
+==== Downsizing
+
+. in the guest unmount the volume and `resize2fs /dev/vdX somesizeM` to shrink
+the filesystem.
+. shut the instance down
+. set the new zvol size on the host compute node: `zfs set volsize=somesize+bufferM zones/<uuid>/diskY`
+`somesize+buffer` simply for safety
+. boot the instance again and `resize2fs /dev/vdX` to grow the filesystem to the
+end of the device
+
+==== Upsizing
+
+. shut the instance down
+. set the new zvol size on the host compute node: `zfs set volsize=somesizeM zones/<uuid>/diskY`
+. boot the instance
+.. if the zvol in question is the boot volume then `cloud-init` will
+automatically resize the partition (typically `/dev/vda4`) and extend the
+filesystem.
+.. if the zvol is a secondary device then depending on the layout `growpart` may
+be needed in addition to `resize2fs`
+
 
 ===  Triton packages/PAPI
 
@@ -294,8 +324,8 @@ unix users matched what existed before/on other instances):
 ----
 svcadm enable smb/server
 svcadm enable smb/client
-svcadm enable rpc/bind # already enabled but for completeness
-svcadm enable idmap    # already enabled but for completeness
+svcadm enable rpc/bind # already enabled but included for completeness
+svcadm enable idmap    # already enabled but included for completeness
 ----
 
 . Create the unix group
@@ -535,6 +565,11 @@ hardware.
 ** `curl -X PUT napi.{sdc domain}/nics/{mac} -d belongs_to_uuid=1002ff03-e004-0105-8e06-ad0700080009`
 where the ownership is wrong (e.g. old headnode)
 ** `curl -X DELETE napi.{sdc domain}/nics/{mac}` where the NIC no longer exists
+
+=== Debugging compute node installation issues
+
+Once a CN has been successfully booted, even if it hasn't been adopted it can
+still be interrogated with `sdc-oneachnode`.
 
 === Triton command-line client and CloudAPI
 
