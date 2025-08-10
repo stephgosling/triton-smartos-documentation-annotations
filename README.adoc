@@ -64,24 +64,24 @@ image.
 . On the headnode create a working directory in `/var/tmp`:
 +
 ----
-[root@headnode (cabin) /var/tmp]# mkdir talos-1.9.1
-[root@headnode (cabin) /var/tmp]# cd talos-1.9.1/
+[root@headnode (cabin) /var/tmp]# mkdir talos-1.10.6
+[root@headnode (cabin) /var/tmp]# cd talos-1.10.6/
 
 ----
 . Fetch and decompress the image:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# wget https://github.com/siderolabs/talos/releases/download/v1.9.1/metal-amd64.raw.zst
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# zstd -d metal-amd64.raw.zst
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# wget https://github.com/siderolabs/talos/releases/download/v1.10.6/metal-amd64.raw.zst
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# zstd -d metal-amd64.raw.zst
 metal-amd64.raw.zst : 1306525696 bytes
 ----
 
 . Create an instance definition:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# cat 1.9.1.vmdef.json
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# cat 1.10.6.vmdef.json
 {
-  "name": "1.9.1",
+  "name": "1.10.6",
   "brand": "bhyve",
   "vcpus": 1,
   "autoboot": false,
@@ -109,17 +109,17 @@ metal-amd64.raw.zst : 1306525696 bytes
 . Create an empty instance from the definition:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# vmadm create -f 1.9.1.json
-Successfully created VM 0f2dbd0c-f314-4bb7-932c-f3520b7d93d1
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# vmadm create -f talos-1.10.6.vmdef.json
+Successfully created VM 8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
 ----
 
 . Noting the zone ID, copy the disk image to the raw device of the empty instance:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# dd if=metal-amd64.raw of=/dev/zvol/rdsk/zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1/disk0 bs=16M
-77+1 records in
-77+1 records out
-1306525696 bytes (1.2 GiB) transferred in 8.571684 secs (145 MiB/sec)
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# dd if=metal-amd64.raw of=/dev/zvol/rdsk/zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0 bs=16M
+140+1 records in
+140+1 records out
+2356150272 bytes (2.2 GiB) transferred in 51.718938 secs (43 MiB/sec)
 ----
 +
 TIP: at this point you might boot the instance to make additional changes e.g.
@@ -129,32 +129,34 @@ attachment).
 . Retrieve the zvol uuid for the for the instance storage:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# vmadm get 0f2dbd0c-f314-4bb7-932c-f3520b7d93d1 | json -a disks | json -a zfs_filesystem
-zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1/disk0
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# vmadm get 8ab900bd-f4a2-4f60-9ccd-e54e51df84b4 |  json -a disks | json -a zfs_filesystem
+zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0
 ----
 
 . Create a snapshot of the zvol and copy it to a file (in this example the quota needed to be extended to allow the snapshot creation):
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# zfs get quota zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs get quota zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
 NAME                                        PROPERTY  VALUE  SOURCE
-zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1  quota     30.3G  local
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# zfs set quota=40G zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# zfs snapshot zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1/disk0@dataset
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# zfs send zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1/disk0@dataset | gzip > 1.9.1.zvol.gz
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# ls -l 1.9.1.zvol.gz
--rw-r--r--   1 root     root     109388709 Jan  2 11:38 1.9.1.zvol.gz
+zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4  quota     30.3G  local
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs set quota=40G zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs snapshot zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0@dataset
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs send zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0@dataset | gzip > talos-1.10.6.zvol.gz
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# ls -l talos-1.10.6.zvol.gz
+-rw-r--r--   1 root     root     216766946 Aug 10 13:32 talos-1.10.6.zvol.gz
+[root@headnode (cabin) /var/tmp/talos-1.10.6]#
 ----
 
-. Create a IMGAPI manifest that describes the desired image:
+. Create a IMGAPI manifest (called `talos-1.10.6.manifest.json` that describes
+the desired image:
 +
 ----
 {
   "v": "2",
   "uuid": "<from the output of uuid>",
   "owner": "<from the output of sdc-ldap s 'login=admin' | grep ^uuid | cut -d' ' -f2>",
-  "name": "talos-1.9.1",
-  "description": "Talos Linux 1.9.1 (SDC v0.0.1)",
+  "name": "talos-1.10.6",
+  "description": "Talos Linux 1.10.6 (SDC v0.0.1)",
   "version": "0.0.1",
   "state": "active",
   "disabled": false,
@@ -163,8 +165,8 @@ zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1  quota     30.3G  local
   "type": "zvol",
   "files": [
     {
-      "sha1": "<from the output of sum -x sha1 /var/tmp/talos-1.9.1/1.9.1.zvol.gz | cut -d' ' -f1>"
-      "size": <from the output of ls -l /var/tmp/talos-1.9.1/1.9.1.zvol.gz | awk '{ print $5 }'>,
+      "sha1": "<from the output of sum -x sha1 /var/tmp/talos-1.10.6/talos-1.10.6.zvol.gz | cut -d' ' -f1>"
+      "size": <from the output of ls -l /var/tmp/talos-1.10.6/talos-1.10.6.zvol.gz | awk '{ print $5 }'>,
       "compression": "gzip"
     }
   ],
@@ -178,7 +180,7 @@ zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1  quota     30.3G  local
    "brand": "bhyve",
    "bootrom": "uefi"
   },
-  "image_size": "<as specified in disks.size in talos-1.9.1.vmdef.json>",
+  "image_size": "<as specified in disks.size in talos-1.10.6.vmdef.json>",
   "disk_driver": "virtio",
   "nic_driver": "virtio",
   "cpu_type": "host"
@@ -188,12 +190,14 @@ zones/0f2dbd0c-f314-4bb7-932c-f3520b7d93d1  quota     30.3G  local
 . Finally, import the image:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.9.1]# sdc-imgadm import -m /var/tmp/talos-1.9.1/1.9.1.manifest.json -f /var/tmp/talos-1.9.1/1.9.1.zvol.gz
-Imported image 01699ed6-c901-11ef-b6be-7085c2dbfb7d (talos-1.9.1, 0.0.1, state=unactivated)
-...c901-11ef-b6be-7085c2dbfb7d [=======================================================>] 100% 104.32MB
-Added file "/var/tmp/talos-1.9.1/1.9.1.zvol.gz" (compression "gzip") to image 01699ed6-c901-11ef-b6be-7085c2dbfb7d
-Activated image 01699ed6-c901-11ef-b6be-7085c2dbfb7d
+[root@headnode (cabin) /var/tmp/talos-1.10.6]# sdc-imgadm import -m /var/tmp/talos-1.10.6/talos-1.10.6.manifest.json -f /var/tmp/talos-1.10.6/talos-1.10.6.zvol.gz
+Imported image 5842ee10-75ef-11f0-9a71-dbc0178393f0 (talos-1.10.6, 0.0.1, state=unactivated)
+...75ef-11f0-9a71-dbc0178393f0 [=======================================================>] 100% 206.73MB
+Added file "/var/tmp/talos-1.10.6/talos-1.10.6.zvol.gz" (compression "gzip") to image 5842ee10-75ef-11f0-9a71-dbc0178393f0
+Activated image 5842ee10-75ef-11f0-9a71-dbc0178393f0
 ----
+
+The image will now be available for use.
 
 == Running Bhyve instances
 
