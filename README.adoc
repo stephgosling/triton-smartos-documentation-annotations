@@ -518,7 +518,7 @@ Temperaturs are exposed via the FMA and can be read with `fmtopo` thus (8 core,
 
 === Disks
 
-==== Reporting and Failures
+==== Reporting and Failures (SAS/SATA)
 
 The FMA is S.M.A.R.T aware but doesn't expose the complete suite of reporting
 that `smartmontools` does, which is not unexpected given that the reporting for
@@ -529,6 +529,35 @@ happen, I should see how the PXE images are built, or, as a worst-case
 `sdc-oneachnode` can drop a binary. All of a sudden this gets additional
 orchestration/configuration management-ey and feels a bit wrong and needs more
 research.
+
+==== Reporting and Failures (NVME)
+
+`nvmeadm` can report various device statistics. First to enumerate drives:
+
+----
+[root@cn1 (cabin) ~]# nvmeadm list
+nvme0: model: CT1000P1SSD8, serial: 1938E21FFB39, FW rev: P3CR013, NVMe v1.3
+  nvme0/1 (c1t00A07519E21FFB39d0): Size = 931.51 GB, Capacity = 931.51 GB, Used = 931.51 GB
+nvme1: model: PC401 NVMe SK hynix 1TB, serial: EJ7CN70461CA41T41, FW rev: 80003E00, NVMe v1.2
+  nvme1/1 (c2tACE42E717000134Cd0): Size = 953.87 GB, Capacity = 953.87 GB, Used = 874.83 GB
+[root@cn1 (cabin) ~]# zpool status
+----
+
+To report health:
+
+----
+[root@cn1 (cabin) ~]# nvmeadm get-logpage  nvme0 health
+nvme0: SMART/Health Information
+  Critical Warnings
+    Available Space:                        OK
+    Temperature:                            OK
+    Device Reliability:                     OK
+    Media:                                  OK
+    Volatile Memory Backup:                 OK
+  Temperature:                              61C
+  Available Spare Capacity:                 100%
+  Device Life Used:                         32%
+----
 
 ==== recordsize, volblocksize, compression and write amplification
 
