@@ -31,18 +31,68 @@ that for me was instructional when initially prototyping Triton.
 * https://www.davepacheco.net/blog/2024/illumos-physical-memory/[very deep dive
 into illumos memory management]. Part two https://www.davepacheco.net/blog/2024/illumos-swap/[here].
 
+= How Triton/SmartOS Manages Virtual Machines
+
+Triton runs VMs via `zones(7)`; these can be native, lx or HVM in nature.
+Describing these is out of scope. However, they are managed in the same way via
+command line tools in SmartOS, or API equivalents thereof in Triton:
+
+== Package API
+
+A package is a collection of properties and limits/boundaries, when coupled with
+an instance image, can constitute a Virtual Machine. These properties are things
+like disk quotas or vCPU allocations, memory limits etc. The https://github.com/TritonDataCenter/sdc-papi/blob/master/docs/index.md[Package API]
+(hereafter PAPI) is the resouce that manages packages for a DC and it is tightly
+coupled with the Virtual Machine API. By-and-large packages are immutable which
+is a consequence of their use in billing, similarly, packages cannot be deleted
+once created for the same reason.
+
+PAPI features aren't well exposed in the console nor is there a native SmartOS
+command-line tool. Triton has `sdc-papi(1)` which is merely a `curl` helper.
+
+Notable features/gotchas:
+
+* quotas in packages being less than the image size will fail silently on
+provisioning.
+* the console only exposes a subset of the PAPI methods, which are rather rich:
+PAPI supports traits, parent packages, OS and network filtering
+
+== Image API
+
+The https://github.com/TritonDataCenter/sdc-imgapi/blob/master/docs/index.md[Image API]
+(hereafter IMGAPI) manages images in a DC. Images can come from upstream or can
+be created (see image creation below). IMGAPI describes images and their
+requirements via image manifests.
+
+IMGAPI can be used via the console for searching for images or importing from
+upstream, but beyond that is read-only; image creation necessarily needs
+command-line access to `imgadm(8)` and `zfs(8)`.
+
+== Virtual Machine API
+
+The https://github.com/TritonDataCenter/sdc-vmapi/blob/master/docs/index.md[Virtual Machine API]
+(hereafter VMAPI) manages Virtual Machines in Triton. Its methods are well
+exposed in the console as well as with `vmadm(8)` and the cluster-wide
+`sdc-vmadm`.
+
 = Hardware Virtual Machines
 
-SmartOS supports both KVM and bhyve as VMMs. Only bhyve supports flexible disk
-storage and instance resizing, making it the preferred choice.
+SmartOS supports both KVM and bhyve as VMMs. Bhyve is considerably more
+performant, supports flexible disk storage and instance resizing which makes it
+now the defacto choice for provisioning hardware virtual machines.
 
-== Building Bhyve images
+== Obtaining images
 
 === Triton Cloud Images
 
-MNX maintain Triton images of Alma, Debian, Rocky, Ubuntu and Void, and these
-can be imported from the public cloud (images.smartos.org) directly in the
-console. If you wish to build your own the packer configuration, scripts etc.
+MNX maintain a repository of images in the public cloud (images.smartos.org)
+containing:
+
+* native zone images for SmartOS itself
+* lx images of various Linux distributiosn
+* HVM images for Alma, Debian, Rocky, Ubuntu and Void Linux
+
+If you wish to build your own the packer configuration, scripts etc.
 https://github.com/TritonDataCenter/triton-cloud-images[can be found here].
 
 === Creating a disk image from an ISO (i.e. a traditional install method)
@@ -219,7 +269,7 @@ vmadm update <uuid> bootrom="/usr/share/bhyve/uefi-rom.bin"
 vmadm start <uuid>
 ----
 
-=== Resizing bhyve instances
+=== Resizing bhyve guest compute parameters
 
 Resizing instances cannot be done via the console. There are however three ways
 to change the CPU and memory limits for a virtual machine. All require the
@@ -229,7 +279,79 @@ instance to be in the stopped state.
 . via the Triton VMAPI: `sdc sdc-vmapi /vms/<instance uuid>?action=update -d '{"billing_id":"<new package uuid>"}'`
 . via the https://smartdatacenter.topicbox.com/groups/sdc-discuss/T0609521b5cfbff31-Mc983b2dc841bdb365667bf46/resize-a-bhyve-instance[triton CLI]
 
-=== Instance storage resizing
+=== Bhyve guest storage
+
+By default, packages https://docs.tritondatacenter.com/private-cloud/install/advanced-configuration#install-sample-packages[imported in cluster setup]
+or created via the console do not specify a disk layout. This means that any
+package with a quota larger than the image size will have the additional disk space
+presented to the guest as a second disk e.g. for a 30GB quota and 10GB image,
+`disk0` (`/dev/vda`) of 10GB, `disk1` (`/dev/vdb`) of the remaining 20GB quota.
+
+When specifying a disk layout in the console it is not possible to use the
+https://github.com/TritonDataCenter/sdc-papi/blob/master/docs/index.md#default-disks-in-package[`remaining`]
+parameter. This means when specifying a single disk of a given size, the
+instance will need to be stopped and the disk resized (see below). While this is
+slightly inconvenient it as the advantage of leaving space available for
+snapshots.
+
+To get AWS-like behaviour from a package, one must interact with PAPI directly
+for example:
++
+----
+[root@headnode (cabin) ~]#  sdc-papi  /packages -X POST -d "$(cat test.json)"
+HTTP/1.1 201 Created
+request-id: 5ea63860-e95e-11f0-b700-07c5233659b9
+request-id: 5ea63860-e95e-11f0-b700-07c5233659b9
+Location: /packages/5ea63860-e95e-11f0-b700-07c5233659b9
+Content-Type: application/json
+Content-Length: 496
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, Api-Version, Response-Time
+Access-Control-Allow-Methods: GET, HEAD, POST
+Access-Control-Expose-Headers: Api-Version, Request-Id, Response-Time
+Connection: Keep-Alive
+Content-MD5: 7Fz3t2T+UCJWh2CKKA4eeA==
+Date: Sun, 04 Jan 2026 11:18:54 GMT
+Server: SDC Package API 7.2.5
+Api-Version: 7.2.5
+Response-Time: 201
+
+{
+  "brand": "bhyve",
+  "uuid": "5ea63860-e95e-11f0-b700-07c5233659b9",
+  "name": "xxtestflex20260104b",
+  "version": "0.0.1",
+  "owner_uuids": [
+    "9cbc0ae6-d9b6-4185-9459-238e0bc466f4"
+  ],
+  "active": true,
+  "vcpus": 1,
+  "cpu_cap": 100,
+  "description": "",
+  "max_lwps": 4000,
+  "max_physical_memory": 2048,
+  "max_swap": 4096,
+  "quota": 20480,
+  "zfs_io_priority": 64,
+  "created_at": "2026-01-04T09:57:39.453Z",
+  "updated_at": "2026-01-04T11:18:54.412Z",
+  "billing_tag": "",
+  "flexible_disk": true,
+  "disks": [
+    {
+      "size": "remaining"
+    }
+  ],
+  "default": false,
+  "group": "",
+  "v": 1
+}
+----
+
+This package will assign a single disk of `quota` size and cloud-init will
+automatically expand to fill the disk on boot.
+
+==== Bhyve guest storage resizing
 
 Although the console supports storage resizing, as with resizing instances, it
 lags behind the triton CLI. To resize a boot or data disk this can be done on
@@ -258,21 +380,8 @@ filesystem.
 .. if the zvol is a secondary device then depending on the layout `growpart` may
 be needed in addition to `resize2fs`
 
+== General storage notes
 
-===  Triton packages/PAPI
-
-Feature-wise PAPI is pretty thread-bare. A Triton Package is a bundling of
-resources that, in conjunction with an image, define a VM. All salient aspects
-of a Package are immutable, and Packages themselves can't be deleted nor
-renamed, which is a bit painful. Good news is that in the Console the default
-search is for _active_ packages so the churn can be hidden with some fastidious
-deactivation.
-* quotas in packages being less than the image size will fail silently on
-provisioning.
-
-=== Storage
-
-* TODO the two disk thing, must try to find that post
 * TODO quotas, reservations and refreservations
 * delegated datasets allow some ZFS administrative operations to happen in a
 zone. Relevant really only for containers, not HVM.
@@ -280,9 +389,9 @@ zone. Relevant really only for containers, not HVM.
 * resizing a zone is as simple (in the global zone) as `zfs set quota=1T zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f`
 * recordsize can be set in a zone and only takes effect with new files: `zfs set recordsize=1M zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f/data`
 
-=== Networked Storage
+== Network storage services
 
-==== NFS
+=== NFS
 
 This is a mix of inexperience wth v4 on my part, the https://docs.smartos.org/configuring-nfs-in-smartos/[
 official SmartOS docs being _very_ out of date] (basically, do not use!) and
@@ -310,7 +419,7 @@ equivalent domain in `/etc/idmapd.conf`.
 filesystems `sync` for durability. This can be mitigated with a log special
 vdev for the ZIL however the practicalities of that are a subject by themselves.
 
-==== SMB
+=== SMB
 
 This is an absolutely massive topic and the documentation is confusing and/or
 out of date. My usecase was simple: migration of data from an equivalent share
