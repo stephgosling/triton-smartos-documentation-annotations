@@ -380,9 +380,23 @@ filesystem.
 .. if the zvol is a secondary device then depending on the layout `growpart` may
 be needed in addition to `resize2fs`
 
+== Locality
+
+Triton has good support for 3 different kinds of locality when provisioning
+VMs, all https://docs.tritondatacenter.com/private-cloud/traits[well documented
+here].
+
+* Traits to help VMAPI schedule VMs based on tags added to images, packages and
+CNs
+* Locality rules (e.g. _near_ and _far_) to locate workloads appropriately
+* Rack-awareness
+
+Notes/gotchas:
+
+* provisioning will fail if traits can't be satisified
+
 == General storage notes
 
-* TODO quotas, reservations and refreservations
 * delegated datasets allow some ZFS administrative operations to happen in a
 zone. Relevant really only for containers, not HVM.
 * quotas can only be set in the global zone
@@ -589,7 +603,9 @@ This is the Triton Topicbox thread].
 * headnode console session history
 * CNS
 * Certificates (needs CNS) (https://github.com/TritonDataCenter/triton-dehydrated[see also this]
-* Traits/locality
+* configuration management for compute nodes
+* smartmontools for compute nodes
+* quotas, reservations and refreservations
 
 === Prometheus and Grafana (this doesn't work)
 
