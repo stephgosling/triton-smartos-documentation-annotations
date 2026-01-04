@@ -465,11 +465,14 @@ zfs set sharesmb=on zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f/data
 
 === CPU caps
 
-By default CPU cap enforcement is enabled and in any production or multi-tenant
-environment the recommendation is to leave it on. This is to prevent perceived
-scheduling issues for different tenants. Capped and non-capped workloads should
-never be mixed as this can cause difficulties for the scheduling of VMAPI/CNAPI.
-If both kinds of workloads need to exist a mitigation is with the use of https://docs.tritondatacenter.com/private-cloud/traits[traits]. This https://smartdatacenter.topicbox.com/groups/sdc-discuss/Tdee50d0ae7379e1d[conversation on the rationale, history and issues] is very useful
+By default CPU cap enforcement is https://github.com/TritonDataCenter/sdc-papi/blob/master/docs/index.md#sapi-configuration[enabled]
+ and in any production or multi-tenant environment the recommendation is to
+leave it on. This is to prevent perceived scheduling issues for different
+tenants. Capped and non-capped workloads should never be mixed as this can cause
+difficulties for the scheduling of VMAPI/CNAPI. If both kinds of workloads need
+to exist a mitigation is with the use of https://docs.tritondatacenter.com/private-cloud/traits[traits].
+This https://smartdatacenter.topicbox.com/groups/sdc-discuss/Tdee50d0ae7379e1d[conversation on the rationale, history and issues]
+is very useful.
 
 ==== Fixing provisioning errors around "no compute resources"
 
