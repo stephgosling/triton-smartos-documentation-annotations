@@ -431,7 +431,8 @@ Without that, NFS from Linux will work but the mappings will be incorrect:
 equivalent domain in `/etc/idmapd.conf`.
 * NFS performance on spinning disk is particularly poor as NFS will mount `rw`
 filesystems `sync` for durability. This can be mitigated with a log special
-vdev for the ZIL however the practicalities of that are a subject by themselves.
+vdev for the ZIL. See link:README.adoc#adding-a-mirrored-SLOG-to-a-pool[Adding a mirrored
+SLOG to a pool]
 
 === SMB
 
@@ -474,8 +475,7 @@ zfs set sharesmb=on zones/9b469b7c-2b46-451b-bcc7-69de7d2f9a1f/data
 
 === Migrations
 
-* migrations happen over the admin network, which for me is 1G rather than 10G.
-
+* migrations happen over the admin network so are limited by its speed.
 
 === CPU caps
 
@@ -646,6 +646,18 @@ Temperaturs are exposed via the FMA and can be read with `fmtopo` thus (8 core,
 
 === Disks
 
+==== Disk usage patterns
+
+On a clean install, the headnode uses around 60GB of actual storage but when
+accounting for reservations/refreservations this figure is an overcommit of
+around 1TB. The headnode may have issues when booting from rotating media: read
+latency can cause services in zones to fail because they have timed out waiting
+for a dependency to start.
+
+Compute nodes can operate with hard drives but are not suited to synchronous
+writes unless they have their ZIL moved to a log device (see
+link:README.adoc#nfs(the NFS section)).
+
 ==== Reporting and Failures (SAS/SATA)
 
 The FMA is S.M.A.R.T aware but doesn't expose the complete suite of reporting
@@ -695,16 +707,101 @@ workloads, when VMAPI creates a virtual machine the volblocksize is by default
 enabling `lz4` (`zstd` is not yet available in Illumos ZFS) but this should be
 done at CN setup time and my (current) understanding is that HVM instances would
 need to be recreated as in a zone migration the zvols properties are going to
-be retained.
+be retained. To enable compression:
+
+----
+[root@headnode (cabin) ~]# zfs get compression zones
+NAME   PROPERTY     VALUE     SOURCE
+zones  compression  off       default
+[root@headnode (cabin) ~]# zfs set compression=lz4 zones
+[root@headnode (cabin) ~]# zfs get compression zones
+NAME   PROPERTY     VALUE     SOURCE
+zones  compression  lz4       local
+----
 
 ==== zpool disk selection
 
 https://github.com/TritonDataCenter/smartos-live/blob/master/src/node_modules/disklayout.js[
-This is the logic] that the installer uses when provisioning a new node. It may
-make choices that are slightly odd (for example on a host with SSD and NVME
-pairs it will chose to allocate the NVME as `SLOG` which is not necessarily what
-you might want). For more involved layouts you may want to start with base
-arrangement at install time then add drives once the node has been provisioned.
+This is the logic] that the installer uses when provisioning a new node. Broadly
+it groups drives by media type and then size but doesn't always make desirable
+choices e.g.
+* for a host with both SSD and NVME it will choose the latter as log device(s)
+* for a host with more than one solid-state drive it will use them as individual
+log devices rather than a mirror.
+
+For more involved layouts you may want to start with base arrangement at install
+time then add drives once the node has been provisioned.
+
+==== Adding a mirrored SLOG to a pool
+
+This is simple to do.
+
+CAUTION: Note however once a log device has been added to a pool it cannot be
+removed.
+
+----
+[root@headnode (cabin) ~]# zpool status
+  pool: zones
+ state: ONLINE
+  scan: none requested
+config:
+
+        NAME        STATE     READ WRITE CKSUM
+        zones       ONLINE       0     0     0
+          mirror-0  ONLINE       0     0     0
+            c2t2d0  ONLINE       0     0     0
+            c2t3d0  ONLINE       0     0     0
+
+errors: No known data errors
+[root@headnode (cabin) ~]# diskinfo
+TYPE    DISK                    VID      PID              SIZE          RMV SSD
+SCSI    c1t0d0                   USB      SanDisk 3.2Gen1   28.67 GiB   yes no
+SATA    c2t0d0                  Lexar    SSD NQ100 256GB   238.47 GiB   no  yes
+SATA    c2t1d0                  Lexar    SSD NQ100 256GB   238.47 GiB   no  yes
+SATA    c2t2d0                  TOSHIBA  MG09ACA14TE      13039.00 GiB  no  no
+SATA    c2t3d0                  TOSHIBA  MG09ACA14TE      13039.00 GiB  no  no
+[root@headnode (cabin) ~]# zpool add zones log mirror c2t0d0 c2t1d0
+[root@headnode (cabin) ~]# zpool status
+  pool: zones
+ state: ONLINE
+  scan: none requested
+config:
+
+        NAME        STATE     READ WRITE CKSUM
+        zones       ONLINE       0     0     0
+          mirror-0  ONLINE       0     0     0
+            c2t2d0  ONLINE       0     0     0
+            c2t3d0  ONLINE       0     0     0
+        logs
+          mirror-1  ONLINE       0     0     0
+            c2t0d0  ONLINE       0     0     0
+            c2t1d0  ONLINE       0     0     0
+
+errors: No known data errors
+----
+
+=== Booting from a ZFS pool
+
+The headnode can be configured to boot from a ZFS pool rather than USB. This
+need not be the `zones` pool but can be. To enable:
+
+----
+[root@headnode (cabin) /zones]# piadm bootable -e zones
+NOTE:  Directory zones/boot on pool zones is now able to be
+this head node's virtual bootable USB key.
+
+If this isn't a replacement pool for an existing bootable
+pool, you should remove the USB key from this headnode
+and then reboot this headnode from a disk in zones
+
+The USB key (even if it's another pool's bootfs) is
+now unmounted because that is what it was
+before piadm ran.
+
+[root@headnode (cabin) /zones]# piadm list
+PI STAMP               BOOTABLE FILESYSTEM            BOOT IMAGE NOW  NEXT
+20260122T000642Z       zones/boot                     next       yes  yes
+----
 
 === Migrating or recovering physical nodes
 
