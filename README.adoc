@@ -1,12 +1,13 @@
-Triton and SmartOS documentation annotations
-============================================
+Notes on SmartOS and Triton Data Centre
+=======================================
 
 A collection of gotchas/links/workarounds/common pitfalls/howtos gleaned whilst
-learning how to run Triton and migrate VMs to it. This is absolutely not a
-tutorial and assumes a basic working knowledge of Triton SDC and SmartOS.
-Also started life as a testbed for learning AsciiDoc works.
+learning how to run Triton. This is not a tutorial and assumes a basic working
+knowledge of SmartOS.
 
-= The canonical documentation
+= Resources
+
+== The canonical documentation
 
 The SmartOS docs are somewhat better than the Triton docs, the latter suffering
 a bit from being out-of-date/incomplete. SmartOS docs are open, Triton currently
@@ -20,8 +21,9 @@ how to run the thing yourself)]
 * https://docs.smartos.org[SmartOS official documentation]
 * https://github.com/TritonDataCenter/rfd[Triton RFD repository]
 * https://github.com/tritondatacenter/triton-cns/blob/master/docs/operator-guide.md[Triton CNS overview]
+* https://illumos.org/hcl/[The Illumos Hardware Compatability List]
 
-= Other useful resources
+== Community links
 
 * https://smartdatacenter.topicbox.com/groups/sdc-discuss/[Triton Data Center Topicbox mailing list]
 * https://smartos.topicbox.com/groups/smartos-discuss/[SmartOS Topicbox mailing list]
@@ -31,13 +33,34 @@ that for me was instructional when initially prototyping Triton.
 * https://www.davepacheco.net/blog/2024/illumos-physical-memory/[very deep dive
 into illumos memory management]. Part two https://www.davepacheco.net/blog/2024/illumos-swap/[here].
 
-= How Triton/SmartOS Manages Virtual Machines
+= Working in Triton
+
+== CloudAPI and the Triton command-line client
+
+On-prem Triton has no portal, so for end users (not operators) https://github.com/TritonDataCenter/sdc-cloudapi[CloudAPI]
+is the only way to interact with it. It isn't enabled by default but is trivial
+to do so: `sdcadm postsetup cloudapi`
+
+https://www.npmjs.com/package/triton[triton] is a nodejs command line utility
+which is simple enough to install (`sudo npm install -g triton`) but the
+configuration is a little odd with self-signed certificates requiring the `-i`
+option and even though documented, `TRITON_TLS_INSECURE=1` and
+`SDC_TLS_INSECURE=1` do not work.
+
+The setup process  will walk through a profile setup requiring the CloudAPI URL,
+Triton username and the fingerprint of the SSH key for that user.
+
+TIP: users (including operators it seems) can only see their own instances so,
+for example, the admin user can only see Triton components.
+
+== How Triton/SmartOS Manages Virtual Machines
 
 Triton runs VMs via `zones(7)`; these can be native, lx or HVM in nature.
-Describing these is out of scope. However, they are managed in the same way via
-command line tools in SmartOS, or API equivalents thereof in Triton:
+Describing these is out of scope, however, they are managed in the same way via
+command line tools in SmartOS, or API equivalents thereof in Triton. The
+following three APIs are the ones pertinent to end-users:
 
-== Package API
+=== Package API
 
 A package is a collection of properties and limits/boundaries, when coupled with
 an instance image, can constitute a Virtual Machine. These properties are things
@@ -47,41 +70,39 @@ coupled with the Virtual Machine API. By-and-large packages are immutable which
 is a consequence of their use in billing, similarly, packages cannot be deleted
 once created for the same reason.
 
-PAPI features aren't well exposed in the console nor is there a native SmartOS
+PAPI features aren't well exposed in the Admin UI nor is there a native SmartOS
 command-line tool. Triton has `sdc-papi(1)` which is merely a `curl` helper.
 
 Notable features/gotchas:
 
 * quotas in packages being less than the image size will fail silently on
 provisioning.
-* the console only exposes a subset of the PAPI methods, which are rather rich:
+* the Admin UI only exposes a subset of the PAPI methods, which are rather rich:
 PAPI supports traits, parent packages, OS and network filtering
 
-== Image API
+=== Image API
 
 The https://github.com/TritonDataCenter/sdc-imgapi/blob/master/docs/index.md[Image API]
 (hereafter IMGAPI) manages images in a DC. Images can come from upstream or can
-be created (see image creation below). IMGAPI describes images and their
-requirements via image manifests.
+be created (see link:README.adoc#triton-cloud-images[image creation below]).
+IMGAPI describes images and their requirements via image manifests.
 
-IMGAPI can be used via the console for searching for images or importing from
+IMGAPI can be used via the Admin UI for searching for images or importing from
 upstream, but beyond that is read-only; image creation necessarily needs
 command-line access to `imgadm(8)` and `zfs(8)`.
 
-== Virtual Machine API
+=== Virtual Machine API
 
 The https://github.com/TritonDataCenter/sdc-vmapi/blob/master/docs/index.md[Virtual Machine API]
 (hereafter VMAPI) manages Virtual Machines in Triton. Its methods are well
-exposed in the console as well as with `vmadm(8)` and the cluster-wide
+exposed in the Admin UI as well as with `vmadm(8)` and the cluster-wide
 `sdc-vmadm`.
 
-= Hardware Virtual Machines
+== Hardware Virtual Machines
 
 SmartOS supports both KVM and bhyve as VMMs. Bhyve is considerably more
 performant, supports flexible disk storage and instance resizing which makes it
 now the defacto choice for provisioning hardware virtual machines.
-
-== Obtaining images
 
 === Triton Cloud Images
 
@@ -95,7 +116,7 @@ containing:
 If you wish to build your own the packer configuration, scripts etc.
 https://github.com/TritonDataCenter/triton-cloud-images[can be found here].
 
-=== Creating a disk image from an ISO (i.e. a traditional install method)
+==== Creating a disk image from an ISO
 
 The SmartOS/Triton documentation is still around KVM rather than Bhyve. The
 process is similar however the `vmadm` documentation is out of date: it
@@ -104,12 +125,12 @@ https://smartos.topicbox.com/groups/smartos-discuss/T1d477bd26c796cad-M6ca9c8317
 This is a good thread] that walks the user through the process including the
 differing commands.
 
-=== Creating a disk image (_not_ from an ISO)
+==== Creating a disk image _not_ from an ISO
 
 Example VM image creation from an existing disk image (e.g. lift-and-shift of an
-existing VM or an appliance-like image as here. This is based on https://docs.tritondatacenter.com/private-cloud/images/kvm[
-the official documentation] with tweaks/fixes accommodating bhyve and a raw
-image.
+existing VM or an appliance-like image as described here. This is based on
+https://docs.tritondatacenter.com/private-cloud/images/kvm[the official
+documentation] with tweaks/fixes accommodating bhyve and a raw image.
 
 . On the headnode create a working directory in `/var/tmp`:
 +
@@ -118,7 +139,7 @@ image.
 [root@headnode (cabin) /var/tmp]# cd talos-1.10.6/
 
 ----
-. Fetch and decompress the image:
+. Fetch and decompress the source image:
 +
 ----
 [root@headnode (cabin) /var/tmp/talos-1.10.6]# wget https://github.com/siderolabs/talos/releases/download/v1.10.6/metal-amd64.raw.zst
@@ -163,7 +184,8 @@ metal-amd64.raw.zst : 1306525696 bytes
 Successfully created VM 8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
 ----
 
-. Noting the zone ID, copy the disk image to the raw device of the empty instance:
+. Noting the zone ID, copy the disk image to the raw device of the empty
+instance:
 +
 ----
 [root@headnode (cabin) /var/tmp/talos-1.10.6]# dd if=metal-amd64.raw of=/dev/zvol/rdsk/zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0 bs=16M
@@ -183,7 +205,8 @@ attachment).
 zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0
 ----
 
-. Create a snapshot of the zvol and copy it to a file (in this example the quota needed to be extended to allow the snapshot creation):
+. Create a snapshot of the zvol and copy it to a file (in this example the quota
+needed to be extended to allow the snapshot creation):
 +
 ----
 [root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs get quota zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
@@ -249,9 +272,9 @@ Activated image 5842ee10-75ef-11f0-9a71-dbc0178393f0
 
 The image will now be available for use.
 
-== Running Bhyve instances
+=== Running Bhyve instances
 
-=== Console output from bhyve instances
+==== Console output from bhyve instances
 
 In order to access to the console of a bhyve instance via VNC, the instance must
 be running with a UEFI bootrom rather than legacy BIOS. For public images this
@@ -269,9 +292,9 @@ vmadm update <uuid> bootrom="/usr/share/bhyve/uefi-rom.bin"
 vmadm start <uuid>
 ----
 
-=== Resizing bhyve guest compute parameters
+==== Resizing bhyve guest compute parameters
 
-Resizing instances cannot be done via the console. There are however three ways
+Resizing instances cannot be done via the Admin UI. There are however three ways
 to change the CPU and memory limits for a virtual machine. All require the
 instance to be in the stopped state.
 
@@ -279,24 +302,24 @@ instance to be in the stopped state.
 . via the Triton VMAPI: `sdc sdc-vmapi /vms/<instance uuid>?action=update -d '{"billing_id":"<new package uuid>"}'`
 . via the https://smartdatacenter.topicbox.com/groups/sdc-discuss/T0609521b5cfbff31-Mc983b2dc841bdb365667bf46/resize-a-bhyve-instance[triton CLI]
 
-=== Bhyve guest storage
+==== Bhyve guest storage
 
 By default, packages https://docs.tritondatacenter.com/private-cloud/install/advanced-configuration#install-sample-packages[imported in cluster setup]
-or created via the console do not specify a disk layout. This means that any
+or created via the Admin UI do not specify a disk layout. This means that any
 package with a quota larger than the image size will have the additional disk space
 presented to the guest as a second disk e.g. for a 30GB quota and 10GB image,
 `disk0` (`/dev/vda`) of 10GB, `disk1` (`/dev/vdb`) of the remaining 20GB quota.
 
-When specifying a disk layout in the console it is not possible to use the
+When specifying a disk layout in the Admin UI it is not possible to use the
 https://github.com/TritonDataCenter/sdc-papi/blob/master/docs/index.md#default-disks-in-package[`remaining`]
 parameter. This means when specifying a single disk of a given size, the
 instance will need to be stopped and the disk resized (see below). While this is
 slightly inconvenient it as the advantage of leaving space available for
 snapshots.
 
-To get AWS-like behaviour from a package, one must interact with PAPI directly
+To get EC2-like behaviour from a package, one must interact with PAPI directly
 for example:
-+
+
 ----
 [root@headnode (cabin) ~]#  sdc-papi  /packages -X POST -d "$(cat test.json)"
 HTTP/1.1 201 Created
@@ -353,13 +376,13 @@ automatically expand to fill the disk on boot.
 
 ==== Bhyve guest storage resizing
 
-Although the console supports storage resizing, as with resizing instances, it
+Although the Admin UI supports storage resizing, as with resizing instances, it
 lags behind the triton CLI. To resize a boot or data disk this can be done on
 the given compute node. In the examples below `X` is the linux device, `Y` is
 the corresponding ZFS zvol, so `/dev/vda` mapping to `disk0`, `/dev/vdb` to
 `disk1` etc.
 
-==== Downsizing
+===== Downsizing
 
 . in the guest unmount the volume and `resize2fs /dev/vdX somesizeM` to shrink
 the filesystem.
@@ -369,7 +392,7 @@ the filesystem.
 . boot the instance again and `resize2fs /dev/vdX` to grow the filesystem to the
 end of the device
 
-==== Upsizing
+===== Upsizing
 
 . shut the instance down
 . set the new zvol size on the host compute node: `zfs set volsize=somesizeM zones/<uuid>/diskY`
@@ -380,7 +403,7 @@ filesystem.
 .. if the zvol is a secondary device then depending on the layout `growpart` may
 be needed in addition to `resize2fs`
 
-== Locality
+=== Locality
 
 Triton has good support for 3 different kinds of locality when provisioning
 VMs, all https://docs.tritondatacenter.com/private-cloud/traits[well documented
@@ -394,6 +417,24 @@ CNs
 Notes/gotchas:
 
 * provisioning will fail if traits can't be satisified
+
+= Managing Triton
+
+== Triton component dependencies
+
+Triton is made up of a variety of services offering APIs exposing functionality.
+They are all described https://docs.tritondatacenter.com/private-cloud/resilience[
+in the HA documentation] but here is a non-exhaustive list of dependencies I've
+discovered in debugging headnode bringup on slow storage:
+
+* lots of things depend on https://docs.tritondatacenter.com/private-cloud/troubleshooting/manatee[Manatee],
+such as Moray (the cluster kv store)
+* UFDS (the clusters directory server) depends on moray
+* amon (the clusters monitoring and alerting service) depend on CNAPI, redis,
+VMAPI, and UFDS
+* FWAPI (the firewall API) depends on UFDS and Moray
+* VMAPI (described link:README.adoc#virtual-machine-api[here]) depends on the
+workflow API, CNAPI, IMGAPI, NAPI, PAPI, VOLAPI and moray
 
 == General storage notes
 
@@ -488,7 +529,7 @@ to exist a mitigation is with the use of https://docs.tritondatacenter.com/priva
 This https://smartdatacenter.topicbox.com/groups/sdc-discuss/Tdee50d0ae7379e1d[conversation on the rationale, history and issues]
 is very useful.
 
-==== Fixing provisioning errors around "no compute resources"
+=== Fixing provisioning errors around "no compute resources"
 
 A single provisioning error can cascade into a DC-wide problem. In one instance
 I had a VM migration that went wrong and left a deleted VM still existing in
@@ -562,30 +603,37 @@ With the cap back in place automatic allocation of new workloads was unblocked.
 
 === Protecting virtual machines
 
-The console offers no guardrails for deleting HVMs (nor indeed compute nodes)
+The Admin UI offers no guardrails for deleting HVMs (nor indeed compute nodes)
 but their datasets can be protected with: `vmadm update <uuid> indestructible_zoneroot=true`
 which will at least stop the zone (therefore, the data) being destroyed.
 
 
 == Networking
 
+Triton requires at a minimum of two networks to function in a networked
+environment: the _admin_ network (completely segregated) and the _external_
+network to interface with the existing network/the Internet. A third network
+_underlay_ is needed for additional networking within the cluster as well as
+more advanced services such as CNS and docker.
+
 === Guest agent
 
 Instances that do not have the guest agent cannot be assigned IP addresses
 from the Triton DHCP server. In order to get an assignment from an external DHCP
-server _Allow DHCP Spoofing_ must be enabled in the console which corresponds to
-the `nics["whichever"].allow_dhcp_spoofing` boolean in VMAPI. Unfortunately this
-is wasteful in the `external` network address space as an address will be
+server _Allow DHCP Spoofing_ must be enabled in the Admin UI which corresponds
+to the `nics["whichever"].allow_dhcp_spoofing` boolean in VMAPI. Unfortunately
+this is wasteful in the `external` network address space as an address will be
 assigned there but not used.
 
 ==== MTU, NICTags and networks
 
 * As stated in the installation documentation, the underlay network MTU *must*
 be 9000
-* MTU for other networks can only be set at network creation time, even for
-the `admin` or `external` networks. For these I believe that this can be
-remedied by creating a new network with the desired MTU and then changing the
-tags on the NICs. Unclear if this will work for the `admin` network.
+* MTU for other networks can only be set at network creation time. This is true
+even for the `admin` network which means it cannot be altered from 1500 as it is
+not a tunable exposed in the installer. It might be possible to remedy by
+creating a new network with the desired MTU and then changing the tags on the
+NICs.
 
 === Compute Node networking
 
@@ -596,28 +644,7 @@ the side effect of a cascading failure for that node resulting in very odd
 behaviour from `vmadm`. https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td611bcbb977e00d1[
 This is the Triton Topicbox thread].
 
-== Miscellanea
-
-=== ToDo
-
-* headnode console session history
-* CNS
-* Certificates (needs CNS) (https://github.com/TritonDataCenter/triton-dehydrated[see also this]
-* configuration management for compute nodes
-* smartmontools for compute nodes
-* quotas, reservations and refreservations
-
-=== Prometheus and Grafana (this doesn't work)
-
-Prometheus source is https://github.com/TritonDataCenter/triton-prometheus[here]
-. The instructions are good but https://github.com/TritonDataCenter/triton-prometheus/blob/master/setup-prometheus.sh[
-there is a shell script to crib some needed settings] e.g.
-
-* `sdc-useradm replace-attr admin triton_cns_enabled true`
-* `sdc-login -l cns "svcadm restart cns-updater`
-
-and an additional shell script documenting how to install a 16.04 LX zone https://github.com/TritonDataCenter/triton-prometheus/blob/master/setup-prometheus-lx.sh[
-is here].
+== Hardware
 
 === Temperatures
 
@@ -656,7 +683,7 @@ for a dependency to start.
 
 Compute nodes can operate with hard drives but are not suited to synchronous
 writes unless they have their ZIL moved to a log device (see
-link:README.adoc#nfs(the NFS section)).
+link:README.adoc#nfs[the NFS section]).
 
 ==== Reporting and Failures (SAS/SATA)
 
@@ -666,9 +693,9 @@ drives from different manufactureres all differ. `smartmontools` is available to
 the headnode via `pkgsrc` but compute nodes can't install packages. `smartmontools`
 may yet make it into the default SmartOS image but in event that this doesn't
 happen, I should see how the PXE images are built, or, as a worst-case
-`sdc-oneachnode` can drop a binary. All of a sudden this gets additional
-orchestration/configuration management-ey and feels a bit wrong and needs more
-research.
+`sdc-oneachnode` can drop a binary. My preferred approach here now is to drop an
+agent container on each compute node with `/dev/rdsk/c*` exposed and
+`smartmontools` installed.
 
 ==== Reporting and Failures (NVME)
 
@@ -706,7 +733,7 @@ workloads, when VMAPI creates a virtual machine the volblocksize is by default
 8k for the disks and is not configurable currently. Received wisdom is that
 enabling `lz4` (`zstd` is not yet available in Illumos ZFS) but this should be
 done at CN setup time and my (current) understanding is that HVM instances would
-need to be recreated as in a zone migration the zvols properties are going to
+need to be recreated as, in a zone migration, the zvols properties are going to
 be retained. To enable compression:
 
 ----
@@ -725,19 +752,20 @@ https://github.com/TritonDataCenter/smartos-live/blob/master/src/node_modules/di
 This is the logic] that the installer uses when provisioning a new node. Broadly
 it groups drives by media type and then size but doesn't always make desirable
 choices e.g.
+
 * for a host with both SSD and NVME it will choose the latter as log device(s)
-* for a host with more than one solid-state drive it will use them as individual
-log devices rather than a mirror.
+* for a host with HDDs and more than one solid-state drive it will use the
+latter as individual log devices rather than a mirror.
 
 For more involved layouts you may want to start with base arrangement at install
-time then add drives once the node has been provisioned.
+time, then add drives once the node has been provisioned.
 
 ==== Adding a mirrored SLOG to a pool
 
 This is simple to do.
 
-CAUTION: Note however once a log device has been added to a pool it cannot be
-removed.
+CAUTION: Note once a log device has been added to a pool it *cannot* be removed,
+only replaced.
 
 ----
 [root@headnode (cabin) ~]# zpool status
@@ -755,7 +783,6 @@ config:
 errors: No known data errors
 [root@headnode (cabin) ~]# diskinfo
 TYPE    DISK                    VID      PID              SIZE          RMV SSD
-SCSI    c1t0d0                   USB      SanDisk 3.2Gen1   28.67 GiB   yes no
 SATA    c2t0d0                  Lexar    SSD NQ100 256GB   238.47 GiB   no  yes
 SATA    c2t1d0                  Lexar    SSD NQ100 256GB   238.47 GiB   no  yes
 SATA    c2t2d0                  TOSHIBA  MG09ACA14TE      13039.00 GiB  no  no
@@ -783,7 +810,9 @@ errors: No known data errors
 === Booting from a ZFS pool
 
 The headnode can be configured to boot from a ZFS pool rather than USB. This
-need not be the `zones` pool but can be. To enable:
+need not be the `zones` pool but can be. Community members report that a
+typical use case for booting from a separate pool is to side-step buggy firmware
+where given drives on a controller can't be booted from. To enable:
 
 ----
 [root@headnode (cabin) /zones]# piadm bootable -e zones
@@ -829,15 +858,31 @@ where the ownership is wrong (e.g. old headnode)
 Once a CN has been successfully booted, even if it hasn't been adopted it can
 still be interrogated with `sdc-oneachnode`.
 
-=== Triton command-line client and CloudAPI
+== Miscellanea
 
-https://www.npmjs.com/package/triton[triton] is a nodejs package and is simple
-enough to install (`sudo npm install -g triton`) but the configuration is a
-little odd with self-signed certificates requiring the `-i` option and even
-though documented, `TRITON_TLS_INSECURE=1` and `SDC_TLS_INSECURE=1` do not work.
+=== ToDo
 
-The setup will walk through a profile setup requiring the CloudAPI URL, Triton
-username and the fingerprint of the SSH key for that user.
+* headnode console session history
+* CNS
+* Certificates (needs CNS) (https://github.com/TritonDataCenter/triton-dehydrated[see also this]
+* configuration management for compute nodes
+* smartmontools for compute nodes
+* quotas, reservations and refreservations
 
-TIP: users (including operators it seems) can only see their own instances so,
-for example, the admin user can only see SDC components.
+= Installing the headnode
+
+The https://docs.tritondatacenter.com/private-cloud/install/headnode-installation[documentation]
+is complete but some points and steps that are worth re-iterating:
+
+* make absolutely sure that there is no semblance of anything ZFS related on
+disks, it _will_ trip the installer up. Even recreating the partition table in
+Linux is not guaranteed to clear everything. What _does_ work is to boot the
+installer or a SmartOS/some other Illumos thumbdrive:
+** `zpool import -a` to see if there are any pools there then `zpool destroy`
+them
+** then run `format` and in that `label` each of the disks.
+* how long the installation will take depends on the speed of the install media.
+A USB 3.0 stick takes approximately 10 minutes to copy the files.
+* Once installed I performed the following:
+** `piadm bootable -e zones` to enable pool booting, and reboot (see link:README.adoc#booting-from-a-zfs-pool[this])
+** `zfs set compression=lz4 zones` to enable LZ4
