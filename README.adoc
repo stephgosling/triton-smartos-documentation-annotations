@@ -614,7 +614,10 @@ Triton requires at a minimum of two networks to function in a networked
 environment: the _admin_ network (completely segregated) and the _external_
 network to interface with the existing network/the Internet. A third network
 _underlay_ is needed for additional networking within the cluster as well as
-more advanced services such as CNS and docker.
+more advanced services such as CNS and docker. Whilst advice for the headnode
+hardware is that it be the same/similar as compute nodes, it appears it cannot
+participate in the underlay network (attempts to bring up the underlay NIC will
+forever be stuck in the _provisioning_ state).
 
 === Guest agent
 
