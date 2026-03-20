@@ -847,10 +847,10 @@ are in this pull request].
 * steps for recovering a headnode involve physically moving the headnode disks,
 as many NICs as is feasible and USB stick. SmartOS will start but Triton likely
 will not because NIC labels (especially `admin`) may be wrong; this can be
-corrected by mounting the USB stick (`sdc-usbkey mount`) and editing the NIC
-tags in `/mnt/usbkey/config`. Following a reboot Triton should start but NICs in
-NAPI will still need to be cleaned up, particularly if reusing headnode
-hardware.
+corrected by mounting the USB stick (`sdc-usbkey mount`, and must be done even
+when booting from a ZFS pool) and editing the NIC tags in `/mnt/usbkey/config`.
+Following a reboot Triton should start but NICs in NAPI will still need to be
+cleaned up, particularly if reusing headnode hardware.
 ** `sdc-napi /nics | less` to list
 ** `curl -X PUT napi.{sdc domain}/nics/{mac} -d belongs_to_uuid=1002ff03-e004-0105-8e06-ad0700080009`
 where the ownership is wrong (e.g. old headnode)
