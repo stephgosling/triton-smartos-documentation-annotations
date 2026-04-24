@@ -403,6 +403,19 @@ filesystem.
 .. if the zvol is a secondary device then depending on the layout `growpart` may
 be needed in addition to `resize2fs`
 
+==== Guests stuck in shutdown
+
+One can inspect the guest state from the global zone first with `pstack $PID`
+which will only show output of the guest is stuck somehow in userland. If it's
+stuck in the kernel then this output will be empty/error. To inspect from the
+kernel side you will need to use the modular debugger:
+
+```
+mdb -ke '0t<PID>::pid2proc | ::walk thread | ::findstack -v'
+```
+
+which will show the threads.
+
 === Locality
 
 Triton has good support for 3 different kinds of locality when provisioning
