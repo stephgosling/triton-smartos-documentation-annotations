@@ -15,7 +15,7 @@ https://smartdatacenter.topicbox.com/groups/sdc-discuss/T9e09dbcc6e7f8847-M86929
 are not].
 
 * https://docs.tritondatacenter.com/public-cloud[End User documentation (i.e.
-MNX customer docs)] but somewhat applicable to those who self-host.
+Edgecast customer docs)] but somewhat applicable to those who self-host.
 * https://docs.tritondatacenter.com/private-cloud[Operator documentation (i.e.
 how to run the thing yourself)]
 * https://docs.smartos.org[SmartOS official documentation]
@@ -50,8 +50,8 @@ option and even though documented, `TRITON_TLS_INSECURE=1` and
 The setup process will walk through a profile setup requiring the CloudAPI URL,
 Triton username and the fingerprint of the SSH key for that user.
 
-TIP: users (including operators it seems) can only see their own instances so,
-for example, the admin user can only see Triton components.
+TIP: users (including operators it seems) can only see their own virtual
+machines so, for example, the admin user can only see Triton components.
 
 == How Triton/SmartOS Manages Virtual Machines
 
@@ -62,9 +62,9 @@ following three APIs are the ones pertinent to end-users:
 
 === Package API
 
-A package is a collection of properties and limits/boundaries, when coupled with
-an instance image, can constitute a Virtual Machine. These properties are things
-like disk quotas or vCPU allocations, memory limits etc. The https://github.com/TritonDataCenter/sdc-papi/blob/master/docs/index.md[Package API]
+A package is a collection of properties, limits and boundaries which, when
+coupled with a virtual machine image can constitute a VM. These properties are
+things like disk quotas or vCPU allocations, memory limits etc. The https://github.com/TritonDataCenter/sdc-papi/blob/master/docs/index.md[Package API]
 (hereafter PAPI) is the resouce that manages packages for a DC and it is tightly
 coupled with the Virtual Machine API. By-and-large packages are immutable which
 is a consequence of their use in billing, similarly, packages cannot be deleted
@@ -98,16 +98,36 @@ The https://github.com/TritonDataCenter/sdc-vmapi/blob/master/docs/index.md[Virt
 exposed in the Admin UI as well as with `vmadm(8)` and the cluster-wide
 `sdc-vmadm`.
 
-== Hardware Virtual Machines
+== Guest workloads, virtualisation and terminology
 
-SmartOS supports both KVM and bhyve as VMMs. Bhyve is considerably more
-performant, supports flexible disk storage and instance resizing which makes it
-now the defacto choice for provisioning hardware virtual machines.
+Naming here can be ambiguous, especially when contrasting with other hypervisors
+or cloud solutions, so it's important to be clear and consistent with the
+terminology.
+
+* In illumos the unit of isolation is always the zone. `zones(7)` are more
+featureful than both BSD Jails and Linux 'containers'. They can be thought of as
+containers but that is a particularly confusing label, especially when
+considering docker workloads.
+* SmartOS builds an abstraction ontop of `zones(7)` that it calls Virtual
+Machines (hence `vmadm`, VMAPI etc.) so whilst working with any guest workload
+the tooling one interacts with is always labelled 'VM' in some way:
+** OS Virtual Machines tend to be referred to as 'zones' still, sometimes with a
+prefix: for example SmartOS zones are often also called 'native zones'. illumos
+the concept of `brands(7)` (c.f. Personalities in Windows NT) where the kernel
+provides syscall emulation of another operating system, such as `lx(7)`. Such
+zones are refered to as 'branded zones' e.g. specifically in that case, 
+'lx zones'
+** Workloads that leverage a Virtual Machine Monitor (VMM) are called Hardware
+Virtual Machines (HVMs) or Guests. SmartOS supports both KVM and bhyve as VMMs.
+Bhyve is considerably more performant, supports flexible disk storage and VM
+resizing which makes it now the defacto choice; KVM is considered deprecated.
+** Instances (in Triton specifically) refer to the native zones that make up the
+control-plane, particularly pertinent in an HA-headnode environment
 
 === Triton Cloud Images
 
-MNX maintain a repository of images in the public cloud (images.smartos.org)
-containing:
+Edgecast maintain a repository of images in the public cloud
+(images.smartos.org) containing:
 
 * native zone images for SmartOS itself
 * lx images of various Linux distributiosn
@@ -118,8 +138,8 @@ https://github.com/TritonDataCenter/triton-cloud-images[can be found here].
 
 ==== Creating a disk image from an ISO
 
-The SmartOS/Triton documentation is still around KVM rather than Bhyve. The
-process is similar however the `vmadm` documentation is out of date: it
+The SmartOS/Triton documentation is still centred around KVM rather than Bhyve.
+The process is similar however the `vmadm` documentation is out of date: it
 mentions methods and flags that _only_ work with KVM and Bhyve is different.
 https://smartos.topicbox.com/groups/smartos-discuss/T1d477bd26c796cad-M6ca9c8317093ee17879656c3[
 This is a good thread] that walks the user through the process including the
@@ -147,7 +167,7 @@ documentation] with tweaks/fixes accommodating bhyve and a raw image.
 metal-amd64.raw.zst : 1306525696 bytes
 ----
 
-. Create an instance definition:
+. Create a VM definition:
 +
 ----
 [root@headnode (cabin) /var/tmp/talos-1.10.6]# cat 1.10.6.vmdef.json
@@ -177,15 +197,15 @@ metal-amd64.raw.zst : 1306525696 bytes
 }
 ----
 
-. Create an empty instance from the definition:
+. Create an empty VM from the definition:
 +
 ----
 [root@headnode (cabin) /var/tmp/talos-1.10.6]# vmadm create -f talos-1.10.6.vmdef.json
 Successfully created VM 8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
 ----
 
-. Noting the zone ID, copy the disk image to the raw device of the empty
-instance:
+. Noting the zone ID, copy the disk image to the raw device of the empty VM:
+
 +
 ----
 [root@headnode (cabin) /var/tmp/talos-1.10.6]# dd if=metal-amd64.raw of=/dev/zvol/rdsk/zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0 bs=16M
@@ -194,11 +214,11 @@ instance:
 2356150272 bytes (2.2 GiB) transferred in 51.718938 secs (43 MiB/sec)
 ----
 +
-TIP: at this point you might boot the instance to make additional changes e.g.
+TIP: at this point you might boot the VM to make additional changes e.g.
 configuration management or installing guest tools etc. (see also cdrom
 attachment).
 
-. Retrieve the zvol uuid for the for the instance storage:
+. Retrieve the zvol uuid for the for the VM storage:
 +
 ----
 [root@headnode (cabin) /var/tmp/talos-1.10.6]# vmadm get 8ab900bd-f4a2-4f60-9ccd-e54e51df84b4 |  json -a disks | json -a zfs_filesystem
@@ -272,19 +292,19 @@ Activated image 5842ee10-75ef-11f0-9a71-dbc0178393f0
 
 The image will now be available for use.
 
-=== Running Bhyve instances
+=== Running Bhyve Virtual Machines
 
-==== Console output from bhyve instances
+==== Console output from bhyve VMs
 
-In order to access to the console of a bhyve instance via VNC, the instance must
+In order to access to the console of a bhyve VM via VNC, the VM must
 be running with a UEFI bootrom rather than legacy BIOS. For public images this
 is already set so happens automatically. For self-built images one must enable
 it in the image https://smartdatacenter.topicbox.com/groups/sdc-discuss/Td4b1c1bb557bae11/spring-2024-hvm-images[thus]:
 
 `sdc-imgadm update <uuid> requirements.brand=bhyve requirements.bootrom=uefi`
 
-For instances not started/managed by Triton, the UEFI bootrom can be enabled on
-a stopped instance directly via `vmadm(8)` on the given compute node:
+For VMs not started/managed by Triton, the UEFI bootrom can be enabled on
+a stopped VM directly via `vmadm(8)` on the given compute node:
 
 ----
 vmadm stop <uuid>
@@ -294,12 +314,12 @@ vmadm start <uuid>
 
 ==== Resizing bhyve guest compute parameters
 
-Resizing instances cannot be done via the Admin UI. There are however three ways
+Resizing virtual machines cannot be done via the Admin UI. There are however three ways
 to change the CPU and memory limits for a virtual machine. All require the
-instance to be in the stopped state.
+VM to be in the stopped state.
 
 . via `vmadm(8)`
-. via the Triton VMAPI: `sdc sdc-vmapi /vms/<instance uuid>?action=update -d '{"billing_id":"<new package uuid>"}'`
+. via the Triton VMAPI: `sdc sdc-vmapi /vms/<uuid>?action=update -d '{"billing_id":"<new package uuid>"}'`
 . via the https://smartdatacenter.topicbox.com/groups/sdc-discuss/T0609521b5cfbff31-Mc983b2dc841bdb365667bf46/resize-a-bhyve-instance[triton CLI]
 
 ==== Bhyve guest storage
@@ -312,10 +332,9 @@ presented to the guest as a second disk e.g. for a 30GB quota and 10GB image,
 
 When specifying a disk layout in the Admin UI it is not possible to use the
 https://github.com/TritonDataCenter/sdc-papi/blob/master/docs/index.md#default-disks-in-package[`remaining`]
-parameter. This means when specifying a single disk of a given size, the
-instance will need to be stopped and the disk resized (see below). While this is
-slightly inconvenient it as the advantage of leaving space available for
-snapshots.
+parameter. This means when specifying a single disk of a given size, the VM will
+need to be stopped and the disk resized (see below). While this is slightly
+inconvenient it as the advantage of leaving space available for snapshots.
 
 To get EC2-like behaviour from a package, one must interact with PAPI directly
 for example:
@@ -376,25 +395,25 @@ automatically expand to fill the disk on boot.
 
 ==== Bhyve guest storage resizing
 
-Although the Admin UI supports storage resizing, as with resizing instances, it
-lags behind the triton CLI. To resize a boot or data disk this can be done on
-the given compute node. In the examples below `X` is the linux device, `Y` is
-the corresponding ZFS zvol, so `/dev/vda` mapping to `disk0`, `/dev/vdb` to
-`disk1` etc.
+Although the Operations Portal supports storage resizing, as with resizing
+virtual machines, it lags behind the triton CLI. Resizing a boot or data disk
+can be done on the given Compute Node. In the examples below `X` is the linux
+device, `Y` is the corresponding ZFS zvol, so `/dev/vda` mapping to `disk0`,
+`/dev/vdb` to `disk1` etc.
 
 ===== Downsizing
 
-. in the guest unmount the volume and `resize2fs /dev/vdX somesizeM` to shrink
+. in the guest, unmount the volume and `resize2fs /dev/vdX somesizeM` to shrink
 the filesystem.
-. shut the instance down
+. shut the virtual machine down
 . set the new zvol size on the host compute node: `zfs set volsize=somesize+bufferM zones/<uuid>/diskY`
 `somesize+buffer` simply for safety
-. boot the instance again and `resize2fs /dev/vdX` to grow the filesystem to the
+. boot the VM again and `resize2fs /dev/vdX` to grow the filesystem to the
 end of the device
 
 ===== Upsizing
 
-. shut the instance down
+. shut the virtual machine down
 . set the new zvol size on the host compute node: `zfs set volsize=somesizeM zones/<uuid>/diskY`
 . boot the instance
 .. if the zvol in question is the boot volume then `cloud-init` will
@@ -498,7 +517,7 @@ is a hodgepodge of https://wiki.smartos.org/configuring-smb-in-smartos/[
 the official documentation] (outdated) and https://illumos.topicbox.com/groups/developer/T853ccac866b92198-M029acf623527b9ff13bd3ada[this thread]. I didn't manage to get `sharemgr` to do anything useful
 but was able to muddle through with `zfs set sharesmb` once the prerequisites
 were done. So steps taken in a zone that was already sharing via NFS (i.e.
-unix users matched what existed before/on other instances):
+unix users matched what existed before/on other hosts):
 
 . Edit `pam.conf` to add `pam_smb_passwd.so.1` (see links above, note tabs)
 . Enable the services:
@@ -749,7 +768,7 @@ By default, the `zones` zpool recordsize is 128k compression is off. For HVM
 workloads, when VMAPI creates a virtual machine the volblocksize is by default
 8k for the disks and is not configurable currently. Received wisdom is that
 enabling `lz4` (`zstd` is not yet available in Illumos ZFS) but this should be
-done at CN setup time and my (current) understanding is that HVM instances would
+done at CN setup time and my (current) understanding is that HVM guests would
 need to be recreated as, in a zone migration, the zvols properties are going to
 be retained. To enable compression:
 
