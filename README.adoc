@@ -115,7 +115,7 @@ the tooling one interacts with is always labelled 'VM' in some way:
 prefix: for example SmartOS zones are often also called 'native zones'. illumos
 the concept of `brands(7)` (c.f. Personalities in Windows NT) where the kernel
 provides syscall emulation of another operating system, such as `lx(7)`. Such
-zones are refered to as 'branded zones' e.g. specifically in that case, 
+zones are refered to as 'branded zones' e.g. specifically in that case,
 'lx zones'
 ** Workloads that leverage a Virtual Machine Monitor (VMM) are called Hardware
 Virtual Machines (HVMs) or Guests. SmartOS supports both KVM and bhyve as VMMs.
@@ -155,24 +155,24 @@ documentation] with tweaks/fixes accommodating bhyve and a raw image.
 . On the headnode create a working directory in `/var/tmp`:
 +
 ----
-[root@headnode (cabin) /var/tmp]# mkdir talos-1.10.6
-[root@headnode (cabin) /var/tmp]# cd talos-1.10.6/
+[root@headnode (cabin) /var/tmp]# mkdir talos-1.14.0
+[root@headnode (cabin) /var/tmp]# cd talos-1.14.0/
 
 ----
 . Fetch and decompress the source image:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# wget https://github.com/siderolabs/talos/releases/download/v1.10.6/metal-amd64.raw.zst
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# zstd -d metal-amd64.raw.zst
-metal-amd64.raw.zst : 1306525696 bytes
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# wget https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.14.0/metal-amd64.raw.zst --no-check-certificate
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# zstd -d metal-amd64.raw.zst
+metal-amd64.raw.zst : 4453302272 bytes
 ----
 
 . Create a VM definition:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# cat 1.10.6.vmdef.json
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# cat empty.vmdef.json
 {
-  "name": "1.10.6",
+  "name": "empty",
   "brand": "bhyve",
   "vcpus": 1,
   "autoboot": false,
@@ -200,18 +200,18 @@ metal-amd64.raw.zst : 1306525696 bytes
 . Create an empty VM from the definition:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# vmadm create -f talos-1.10.6.vmdef.json
-Successfully created VM 8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# vmadm create -f empty.vmdef.json
+Successfully created VM f34b4e1a-3ed5-440e-a0bd-c9e7c28606de
 ----
 
 . Noting the zone ID, copy the disk image to the raw device of the empty VM:
 
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# dd if=metal-amd64.raw of=/dev/zvol/rdsk/zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0 bs=16M
-140+1 records in
-140+1 records out
-2356150272 bytes (2.2 GiB) transferred in 51.718938 secs (43 MiB/sec)
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# dd if=metal-amd64.raw of=/dev/zvol/rdsk/zones/f34b4e1a-3ed5-440e-a0bd-c9e7c28606de/disk0 bs=16M
+265+1 records in
+265+1 records out
+4453302272 bytes (4.1 GiB) transferred in 63.062095 secs (67 MiB/sec)
 ----
 +
 TIP: at this point you might boot the VM to make additional changes e.g.
@@ -221,26 +221,32 @@ attachment).
 . Retrieve the zvol uuid for the for the VM storage:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# vmadm get 8ab900bd-f4a2-4f60-9ccd-e54e51df84b4 |  json -a disks | json -a zfs_filesystem
-zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# vmadm get f34b4e1a-3ed5-440e-a0bd-c9e7c28606de |  json -a disks | json -a zfs_filesystem
+zones/f34b4e1a-3ed5-440e-a0bd-c9e7c28606de/disk0
 ----
 
 . Create a snapshot of the zvol and copy it to a file (in this example the quota
 needed to be extended to allow the snapshot creation):
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs get quota zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# zfs get quota zones/f34b4e1a-3ed5-440e-a0bd-c9e7c28606de
 NAME                                        PROPERTY  VALUE  SOURCE
-zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4  quota     30.3G  local
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs set quota=40G zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs snapshot zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0@dataset
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# zfs send zones/8ab900bd-f4a2-4f60-9ccd-e54e51df84b4/disk0@dataset | gzip > talos-1.10.6.zvol.gz
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# ls -l talos-1.10.6.zvol.gz
--rw-r--r--   1 root     root     216766946 Aug 10 13:32 talos-1.10.6.zvol.gz
-[root@headnode (cabin) /var/tmp/talos-1.10.6]#
+zones/f34b4e1a-3ed5-440e-a0bd-c9e7c28606de  quota     30.3G  local
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# zfs set quota=40G zones/f34b4e1a-3ed5-440e-a0bd-c9e7c28606de
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# zfs snapshot zones/f34b4e1a-3ed5-440e-a0bd-c9e7c28606de/disk0@dataset
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# zfs send zones/f34b4e1a-3ed5-440e-a0bd-c9e7c28606de/disk0@dataset | gzip > talos-1.14.0.zvol.gz
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# ls -l talos-1.14.0.zvol.gz
+-rw-r--r--   1 root     root     261869777 Sep  8 12:38 talos-1.14.0.zvol.gz
 ----
 
-. Create a IMGAPI manifest (called `talos-1.10.6.manifest.json` that describes
+. At this point the empty VM is no longer needed so can be removed:
++
+----
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# vmadm destroy f34b4e1a-3ed5-440e-a0bd-c9e7c28606de
+Successfully deleted VM f34b4e1a-3ed5-440e-a0bd-c9e7c28606de
+----
+
+. Create a IMGAPI manifest (called `talos-1.14.0.manifest.json` that describes
 the desired image:
 +
 ----
@@ -248,8 +254,8 @@ the desired image:
   "v": "2",
   "uuid": "<from the output of uuid>",
   "owner": "<from the output of sdc-ldap s 'login=admin' | grep ^uuid | cut -d' ' -f2>",
-  "name": "talos-1.10.6",
-  "description": "Talos Linux 1.10.6 (SDC v0.0.1)",
+  "name": "talos-1.14.0",
+  "description": "Talos Linux 1.14.0 (SDC v0.0.1)",
   "version": "0.0.1",
   "state": "active",
   "disabled": false,
@@ -258,8 +264,8 @@ the desired image:
   "type": "zvol",
   "files": [
     {
-      "sha1": "<from the output of sum -x sha1 /var/tmp/talos-1.10.6/talos-1.10.6.zvol.gz | cut -d' ' -f1>"
-      "size": <from the output of ls -l /var/tmp/talos-1.10.6/talos-1.10.6.zvol.gz | awk '{ print $5 }'>,
+      "sha1": "<from the output of sum -x sha1 talos-1.14.0.zvol.gz | cut -d' ' -f1>"
+      "size": <from the output of ls -l talos-1.14.0.zvol.gz | awk '{ print $5 }'>,
       "compression": "gzip"
     }
   ],
@@ -273,21 +279,73 @@ the desired image:
    "brand": "bhyve",
    "bootrom": "uefi"
   },
-  "image_size": "<as specified in disks.size in talos-1.10.6.vmdef.json>",
+  "image_size": <as specified in disks.size in empty.vmdef.json>,
   "disk_driver": "virtio",
   "nic_driver": "virtio",
   "cpu_type": "host"
 }
 ----
 
++
+TIP: The above, wrapped into a shell script looks like this:
+----
+#!/usr/bin/env bash
+
+VMNAME=$(basename $(pwd))
+SDCVER='0.0.2'
+VMDESC="Talos Linux 1.14.0 (SDC ${SDCVER})"
+OWNER_UUID=$(sdc-ldap s 'login=admin' | grep ^uuid | cut -d' ' -f2)
+IMAGE_SIZE=10240
+ZVOL_BLOCKSIZE=$(ls -l ${VMNAME}.zvol.gz | awk '{ print $5 }')
+ZVOL_SHA1=$(sum -x sha1 ${VMNAME}.zvol.gz | cut -d' ' -f1)
+
+
+cat << EOF
+{
+  "v": "2",
+  "uuid": "$(uuid)",
+  "owner": "${OWNER_UUID}",
+  "name": "${VMNAME}",
+  "description": "${VMDESC}",
+  "version": "${SDCVER}",
+  "state": "active",
+  "disabled": false,
+  "public": true,
+  "os": "linux",
+  "type": "zvol",
+  "files": [
+    {
+      "sha1": "${ZVOL_SHA1}",
+      "size": ${ZVOL_BLOCKSIZE},
+      "compression": "gzip"
+    }
+  ],
+  "requirements": {
+    "networks": [
+      {
+        "name": "net0",
+        "description": "public"
+      }
+    ],
+   "brand": "bhyve",
+   "bootrom": "uefi"
+  },
+  "image_size": ${IMAGE_SIZE},
+  "disk_driver": "virtio",
+  "nic_driver": "virtio",
+  "cpu_type": "host"
+}
+EOF
+----
+
 . Finally, import the image:
 +
 ----
-[root@headnode (cabin) /var/tmp/talos-1.10.6]# sdc-imgadm import -m /var/tmp/talos-1.10.6/talos-1.10.6.manifest.json -f /var/tmp/talos-1.10.6/talos-1.10.6.zvol.gz
-Imported image 5842ee10-75ef-11f0-9a71-dbc0178393f0 (talos-1.10.6, 0.0.1, state=unactivated)
-...75ef-11f0-9a71-dbc0178393f0 [=======================================================>] 100% 206.73MB
-Added file "/var/tmp/talos-1.10.6/talos-1.10.6.zvol.gz" (compression "gzip") to image 5842ee10-75ef-11f0-9a71-dbc0178393f0
-Activated image 5842ee10-75ef-11f0-9a71-dbc0178393f0
+[root@headnode (cabin) /var/tmp/talos-1.14.0]# sdc-imgadm import -m talos-1.14.0.manifest.json -f talos-1.14.0.zvol.gz
+Imported image ed6bd1b0-ab85-11f1-8fa4-07421ff627ca (talos-1.14.0, 0.0.2, state=unactivated)
+...1f1-8fa4-07421ff627ca [======================================>] 100% 249.74MB
+Added file "talos-1.14.0.zvol.gz" (compression "gzip") to image ed6bd1b0-ab85-11f1-8fa4-07421ff627ca
+Activated image ed6bd1b0-ab85-11f1-8fa4-07421ff627ca
 ----
 
 The image will now be available for use.
