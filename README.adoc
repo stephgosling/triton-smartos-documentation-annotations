@@ -903,10 +903,11 @@ errors: No known data errors
 
 === Booting from a ZFS pool
 
-The headnode can be configured to boot from a ZFS pool rather than USB. This
-need not be the `zones` pool but can be. Community members report that a
-typical use case for booting from a separate pool is to side-step buggy firmware
-where given drives on a controller can't be booted from. To enable:
+The headnode and standalone SmartOS can be configured to boot from a ZFS pool
+rather than USB. This need not be the `zones` pool but can be. Community members
+report that a typical use case for booting from a separate pool is to side-step
+buggy firmware where given drives on a controller can't be booted from.
+To enable:
 
 ----
 [root@headnode (cabin) /zones]# piadm bootable -e zones
@@ -925,6 +926,10 @@ before piadm ran.
 PI STAMP               BOOTABLE FILESYSTEM            BOOT IMAGE NOW  NEXT
 20260122T000642Z       zones/boot                     next       yes  yes
 ----
+
+For SmartOS, new Platform Images are managed via `piadm` (`piadm install
+20260122T000642Z`, `piadm activate 20260122T000642Z` etc.) but for the headnode
+these functions are performed with `sdcadm`
 
 === Migrating or recovering physical nodes
 
@@ -952,33 +957,118 @@ where the ownership is wrong (e.g. old headnode)
 Once a CN has been successfully booted, even if it hasn't been adopted it can
 still be interrogated/altered with `sdc-oneachnode`.
 
-== Miscellanea
 
-=== ToDo
+= Installing the headnode/installing standalone SmartOS
 
-* headnode console session history
-* CNS
-* Certificates (needs CNS) (https://github.com/TritonDataCenter/triton-dehydrated[see also this]
-* configuration management for compute nodes
-* smartmontools for compute nodes
-* quotas, reservations and refreservations
-
-= Installing the headnode
-
-The https://docs.tritondatacenter.com/private-cloud/install/headnode-installation[documentation]
-is complete but some points and steps that are worth re-iterating:
+The https://docs.tritondatacenter.com/private-cloud/install/headnode-installation[headnode
+documentation] and https://docs.smartos.org/download-smartos/[standalone SmartOS
+documentation] are complete but some points and steps that are worth
+re-iterating:
 
 * make absolutely sure that there is no semblance of anything ZFS related on
-disks, it _will_ trip the installer up. Even recreating the partition table in
-Linux is not guaranteed to clear everything. What _does_ work is to boot the
+disks, it _will_ trip either installer up. Even recreating the partition table
+in Linux is not guaranteed to clear everything. What _does_ work is to boot the
 installer or a SmartOS/some other Illumos thumbdrive:
 ** `zpool import -a` to see if there are any pools there then `zpool destroy`
 them
 ** then run `format` and in that `label` each of the disks.
 * how long the installation will take depends on the speed of the install media.
-A USB 3.0 stick takes approximately 10 minutes to copy the files. If not booting
-from a pool use the fastest USB disk you can find as this can save several
-minutes for each reboot.
-* Once installed I performed the following:
+For Triton, a USB 3.0 stick takes approximately 10 minutes to copy the files.
+If not booting from a pool use the fastest USB disk you can find as this can
+save several minutes for each reboot.
+* Once installed I perform the following:
 ** `piadm bootable -e zones` to enable pool booting, and reboot (see link:README.adoc#booting-from-a-zfs-pool[this])
 ** `zfs set compression=lz4 zones` to enable LZ4
+** `pkgin install mozilla-rootcerts-openssl` to get modern CA chains
+** Persist `/root` (see link:README.adoc#persisting-root[below])
+
+== Miscellanea
+
+=== Persisting /root
+
+By default /root is populated in the ramdisk at boot which means that any files
+there (such as `.bash_history`, SSH known_hosts etc.) are lost on reboot.
+https://docs.smartos.org/persistent-root-dotfiles/[there are examples for
+persisting the root dotfiles] but I prefer to overlay a different directory
+(`/var/root` in my case) over the whole of `/root` using a similar technique:
+
+. Create the new root (`/var` is its own ZFS dataset): `mkdir -m 0700 /var/root`
+. Copy over the existing files:
++
+----
+cp -p /root/.bashrc /var/root/
+cp -p /root/.profile /var/root/
+cp -Rp /root/.ssh /var/root/
+----
+
+. Create a new SMF manifest in `/opt/custom/smf` describing a service that will perform the mount:
++
+----
+# cat /opt/custom/smf/root_home.xml
+<?xml version='1.0'?>
+<!DOCTYPE service_bundle SYSTEM '/usr/share/lib/xml/dtd/service_bundle.dtd.1'>
+<service_bundle type='manifest' name='export'>
+  <service name='site/root_home' type='service' version='0'>
+    <create_default_instance enabled='true'/>
+    <single_instance/>
+    <dependency name='network' grouping='require_all' restart_on='error' type='service'>
+      <service_fmri value='svc:/milestone/network:default'/>
+    </dependency>
+    <dependency name='filesystem' grouping='require_all' restart_on='error' type='service'>
+      <service_fmri value='svc:/system/filesystem/local'/>
+    </dependency>
+    <method_context/>
+    <exec_method name='start' type='method' exec='mount -O -F lofs /var/root /root' timeout_seconds='60'/>
+    <exec_method name='stop' type='method' exec=':kill' timeout_seconds='60'/>
+    <property_group name='startd' type='framework'>
+      <propval name='duration' type='astring' value='transient'/>
+      <propval name='ignore_error' type='astring' value='core,signal'/>
+    </property_group>
+    <property_group name='application' type='application'/>
+    <stability value='Evolving'/>
+    <template>
+      <common_name>
+        <loctext xml:lang='C'>Overlay mount /var/root on /root</loctext>
+      </common_name>
+    </template>
+  </service>
+</service_bundle>
+----
+
+. Import the service: `svccfg import /opt/custom/smf/root_home.xml`
+. Check the status:
++
+----
+# svcs svc:/site/root_home
+STATE          STIME    FMRI
+online         19:03:13 svc:/site/root_home:default
+----
+. Logout and back in all SSH sessions (or reboot) for this to take effect.
+
+=== Fix terminal sequences
+
+SmartOS ships without bindings for `readline` for common sequences meaning
+things like the Ctrl+Left/Right arrow word-jump keys don't work as they do on
+Linux distributions. For example, the terminal emulator sends the xterm escape
+sequence `\e[1;5D/` for these keys, but without the bindings `readline` consumes
+the leading `\e[1` and echoes the remainder unparsed (in this case `;5D` for
+Ctrl-Left).  To resolve, create an `.initrc` dotfile for root containing the
+following:
+
+----
+"\e[1;5D": backward-word
+"\e[1;5C": forward-word
+"\e[1;5H": beginning-of-line
+"\e[1;5F": end-of-line
+"\e[1;5A": previous-history
+"\e[1;5B": next-history
+----
+
+
+=== ToDo
+
+* CNS
+* Certificates (needs CNS) (https://github.com/TritonDataCenter/triton-dehydrated[see also this]
+* configuration management for compute nodes
+* smartmontools for compute nodes
+* quotas, reservations and refreservations
