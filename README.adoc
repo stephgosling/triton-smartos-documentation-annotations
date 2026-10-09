@@ -124,17 +124,27 @@ resizing which makes it now the defacto choice; KVM is considered deprecated.
 ** Instances (in Triton specifically) refer to the native zones that make up the
 control-plane, particularly pertinent in an HA-headnode environment
 
-=== Triton Cloud Images
+=== Triton Images
 
-Edgecast maintain a repository of images in the public cloud
-(images.smartos.org) containing:
+Edgecast maintain a repository of images in the public cloud at
+https://images.smartos.org[images.smartos.org] containing:
 
 * native zone images for SmartOS itself
 * lx images of various Linux distributions
-* HVM images for Alma, Debian, Rocky, Ubuntu, Void Linuxes and Windows. Build
-tooling for this is via https://developer.hashicorp.com/packer[Packer] and the
-configuration, scripts etc.
+* HVM images for a variety of Linux distributions with the SmartOS cloudinit
+integration: Alma, Debian, Rocky, Ubuntu, Void Linuxes.
+* HVM images for a variety of other operating systems with the `nocloud`
+cloudinit datasource: Alpine, FreeBSD, Talos Linux
+
+Tooling for the cloud images is built around https://developer.hashicorp.com/packer[Packer],
+and the configuration, scripts etc.
 https://github.com/TritonDataCenter/triton-cloud-images[can be found here].
+Windows is built in the same way but as that is BYOL it doesn't appear in the
+repository.
+
+Nocloud images are created from configurations https://github.com/TritonDataCenter/triton-nocloud-images[in this repo].
+These are much less advanced and basically unpack an image and create a dataset
+from it.
 
 ==== Creating a disk image from an ISO
 
