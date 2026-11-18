@@ -131,10 +131,66 @@ https://images.smartos.org[images.smartos.org] containing:
 
 * native zone images for SmartOS itself
 * lx images of various Linux distributions
-* HVM images for a variety of Linux distributions with the SmartOS cloudinit
-integration: Alma, Debian, Rocky, Ubuntu, Void Linuxes.
-* HVM images for a variety of other operating systems with the `nocloud`
-cloudinit datasource: Alpine, FreeBSD, Talos Linux
+* (deprecated) HVM images for a variety of Linux distributions with the SmartOS
+cloudinit integration: Alma, Debian, Rocky, Ubuntu, Void Linuxes.
+* (deprecated) HVM images for a variety of other operating systems with the
+`nocloud` cloudinit datasource: Alpine, FreeBSD, Talos Linux
+
+The preferred method for obtaining HVM images is now via the Cloud Image Index
+(see below)
+
+=== Cloud Image Index
+
+Since `nocloud` support landed in SmartOS, EdgeCast have launched https://github.com/TritonDataCenter/cloud-image-index[
+the Cloud Image Index] which is an automatically updated list of OS images as
+provided directly by their vendors. The index is machine readable and can be
+pulled directly from https://cloud-images.tritoncloud.io/v1/index.json. There is
+a https://github.com/TritonDataCenter/cloud-image-index#cloud-image-for-smartos[small command-line utility]
+that can be used to pull images onto standalone SmartOS. No integration exists
+for Triton but importing images is trivial using `cloud-image`:
+
+. import the image into the HN local `imgapi` (note the `--keep` flag):
++
+----
+[root@headnode (cabin) /var/tmp/cloud-image]# cloud-image import --keep ea7bc651-1781-58cc-bfae-61073bddec6a
+Image:   smartos rolling build 20261023T001807Z
+Source:  https://us-central.manta.mnx.io/Joyent_Dev/public/SmartOS/20261023T001807Z/smartos-20261023T001807Z-USB.img.gz
+note: smartos rolling does not use cloud-init's NoCloud datasource: a guest made from it does not read the cloud-init configuration (user-data, SSH keys) SmartOS gives through it
+Fetching https://us-central.manta.mnx.io/Joyent_Dev/public/SmartOS/20261023T001807Z/sha256sums.txt
+Expect:  Sha256 eb05340c7162002082915f404198a9818b0c86cf9ea67a45bfdb8921cdf80ed6 (the index)
+Expect:  Sha256 eb05340c7162002082915f404198a9818b0c86cf9ea67a45bfdb8921cdf80ed6 (https://us-central.manta.mnx.io/Joyent_Dev/public/SmartOS/20261023T001807Z/sha256sums.txt)
+UUID:    ea7bc651-1781-58cc-bfae-61073bddec6a
+Downloading smartos-20261023T001807Z-USB.img.gz
+  URL: https://us-central.manta.mnx.io/Joyent_Dev/public/SmartOS/20261023T001807Z/smartos-20261023T001807Z-USB.img.gz
+Hashing source image ...
+Creating zvol: zones/tritonadm-nocloud-258468b6-9905-4821-bc02-91a087169238 (1851 MiB virtual)
+Writing image to zvol (1940000256 bytes from raw.gz) ...
+Snapshotting zvol ...
+Exporting ZFS stream → /var/tmp/cloud-image/image/smartos-rolling-20261023T001807Z/smartos-rolling-20261023T001807Z.x86_64.zfs ...
+Compressing image ...
+Destroying zvol: zones/tritonadm-nocloud-258468b6-9905-4821-bc02-91a087169238
+
+Image:    /var/tmp/cloud-image/image/smartos-rolling-20261023T001807Z/smartos-rolling-20261023T001807Z.x86_64.zfs.gz
+Manifest: /var/tmp/cloud-image/image/smartos-rolling-20261023T001807Z/smartos-rolling-20261023T001807Z.json
+UUID:     ea7bc651-1781-58cc-bfae-61073bddec6a
+Installing into the local SmartOS image store via imgadm...
+Installing image ea7bc651-1781-58cc-bfae-61073bddec6a (smartos-rolling-nocloud@20261023T001807Z)
+zones/ea7bc651-1781-58cc-bfae-61073bddec6a                            [============================================================================================================================================================================>] 100% 216.15MB  64.41MB/s     3s
+Installed image ea7bc651-1781-58cc-bfae-61073bddec6a (smartos-rolling-nocloud@20261023T001807Z)
+----
+
+. just like any other image, use the manifest to import the zvol into the
+cluster-wide IMGAPI:
++
+----
+[root@headnode (cabin) /var/tmp/cloud-image]# sdc-imgadm import -m image/smartos-rolling-20261023T001807Z/smartos-rolling-20261023T001807Z.json -f image/smartos-rolling-20261023T001807Z/smartos-rolling-20261023T001807Z.x86_64.zfs.gz
+Imported image ea7bc651-1781-58cc-bfae-61073bddec6a (smartos-rolling-nocloud, 20261023T001807Z, state=unactivated)
+ea7bc651-1781-58cc-bfae-61073bddec6a                                  [============================================================================================================================================================================>] 100% 216.15MB
+Added file "image/smartos-rolling-20261023T001807Z/smartos-rolling-20261023T001807Z.x86_64.zfs.gz" (compression "gzip") to image ea7bc651-1781-58cc-bfae-61073bddec6a
+Activated image ea7bc651-1781-58cc-bfae-61073bddec6a
+----
+
+=== Building images
 
 Tooling for the cloud images is built around https://developer.hashicorp.com/packer[Packer],
 and the configuration, scripts etc.
@@ -145,6 +201,8 @@ repository.
 Nocloud images are created from configurations https://github.com/TritonDataCenter/triton-nocloud-images[in this repo].
 These are much less advanced and basically unpack an image and create a dataset
 from it.
+
+
 
 ==== Creating a disk image from an ISO
 
